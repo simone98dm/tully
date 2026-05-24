@@ -3,7 +3,7 @@ import SwiftUI
 
 struct ContentView: View {
     var body: some View {
-        Text("MyMenu")
+        SystemMonitorView()
             .frame(width: 340, height: 480)
     }
 }
