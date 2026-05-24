@@ -1,17 +1,11 @@
-//
-//  tullyApp.swift
-//  tully
-//
-//  Created by Simone Dal Mas on 24/05/2026.
-//
-
+// tully/tullyApp.swift
 import SwiftUI
 
 @main
-struct tullyApp: App {
+struct MyMenuApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
+
     var body: some Scene {
-        WindowGroup {
-            ContentView()
-        }
+        Settings { }
     }
 }

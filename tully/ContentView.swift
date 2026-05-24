@@ -1,24 +1,9 @@
-//
-//  ContentView.swift
-//  tully
-//
-//  Created by Simone Dal Mas on 24/05/2026.
-//
-
+// tully/ContentView.swift
 import SwiftUI
 
 struct ContentView: View {
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
-        }
-        .padding()
+        Text("MyMenu")
+            .frame(width: 340, height: 480)
     }
-}
-
-#Preview {
-    ContentView()
 }
