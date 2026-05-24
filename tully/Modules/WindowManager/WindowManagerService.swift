@@ -8,10 +8,31 @@ final class WindowManagerService {
     var shortcuts: [String: ShortcutBinding] = [:]
 
     private let defaultsKey = "com.mymenu.shortcuts"
+    private let handler = KeyboardShortcutHandler()
 
     func setup() {
         isPermissionGranted = AXIsProcessTrusted()
         loadShortcuts()
+        guard isPermissionGranted else { return }
+        rebuildHandlerBindings()
+        handler.onZoneTriggered = { [weak self] zone in
+            self?.moveActiveWindow(to: zone)
+        }
+        handler.start()
+    }
+
+    func teardown() {
+        handler.stop()
+    }
+
+    func rebuildHandlerBindings() {
+        var map: [ShortcutBinding: WindowZone] = [:]
+        for zone in WindowZone.allCases {
+            if let binding = shortcuts[zone.rawValue] {
+                map[binding] = zone
+            }
+        }
+        handler.bindings = map
     }
 
     func moveActiveWindow(to zone: WindowZone) {
@@ -41,6 +62,7 @@ final class WindowManagerService {
             shortcuts.removeValue(forKey: zone.rawValue)
         }
         saveShortcuts()
+        rebuildHandlerBindings()
     }
 
     func conflictingZone(for binding: ShortcutBinding, excluding zone: WindowZone) -> WindowZone? {
