@@ -7,46 +7,62 @@ final class DiskScanService {
     var isScanning = false
     var lastScanDate: Date?
 
+    private var scanTask: Task<Void, Never>?
+
     func scan() {
         guard !isScanning else { return }
+        scanTask?.cancel()
         isScanning = true
-        Task.detached(priority: .utility) {
-            let folders = await DiskScanService.runScan()
-            await MainActor.run { [weak self] in
-                self?.topFolders = folders
+        topFolders = []
+
+        scanTask = Task.detached(priority: .utility) { [weak self] in
+            let fm = FileManager.default
+            let home = fm.homeDirectoryForCurrentUser
+
+            guard let topLevel = try? fm.contentsOfDirectory(
+                at: home,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            ) else {
+                await MainActor.run { self?.isScanning = false }
+                return
+            }
+
+            var accumulated: [FolderInfo] = []
+
+            for url in topLevel {
+                guard !Task.isCancelled else { break }
+                let bytes = Self.allocatedSize(of: url, fm: fm)
+                guard bytes > 0 else { continue }
+                accumulated.append(FolderInfo(url: url, bytes: bytes))
+                // Progressive update: sort and push after each folder so UI fills in gradually
+                let sorted = accumulated.sorted { $0.bytes > $1.bytes }
+                await MainActor.run { self?.topFolders = sorted }
+            }
+
+            await MainActor.run {
                 self?.isScanning = false
                 self?.lastScanDate = Date()
             }
         }
     }
 
-    private static func runScan() async -> [FolderInfo] {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = ["-c", "du -sk \"\(home)\"/* 2>/dev/null"]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = Pipe()
+    // Recursive allocated size via FileManager — no subprocess, single TCC grant remembered by OS.
+    private nonisolated static func allocatedSize(of url: URL, fm: FileManager) -> Int64 {
+        let keys: Set<URLResourceKey> = [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey]
+        guard let enumerator = fm.enumerator(
+            at: url,
+            includingPropertiesForKeys: Array(keys),
+            options: [.skipsHiddenFiles],
+            errorHandler: { _, _ in true } // skip inaccessible items silently
+        ) else { return 0 }
 
-        do { try process.run() } catch { return [] }
-        process.waitUntilExit()
-
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        guard let output = String(data: data, encoding: .utf8) else { return [] }
-
-        var results: [FolderInfo] = []
-        for line in output.components(separatedBy: "\n") {
-            let parts = line.components(separatedBy: "\t")
-            guard parts.count == 2,
-                  let kbSize = Int64(parts[0].trimmingCharacters(in: .whitespaces))
-            else { continue }
-            let path = parts[1].trimmingCharacters(in: .whitespaces)
-            guard !path.isEmpty else { continue }
-            let url = URL(fileURLWithPath: path)
-            results.append(FolderInfo(url: url, bytes: kbSize * 1024))
+        var total: Int64 = 0
+        for case let fileURL as URL in enumerator {
+            guard !Task.isCancelled else { break }
+            guard let values = try? fileURL.resourceValues(forKeys: keys) else { continue }
+            total += Int64(values.totalFileAllocatedSize ?? values.fileAllocatedSize ?? 0)
         }
-
-        return results.sorted { $0.bytes > $1.bytes }
+        return total
     }
 }

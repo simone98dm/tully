@@ -6,18 +6,64 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var popover: NSPopover!
 
+    let monitor = SystemMonitorService()
+    let diskScanner = DiskScanService()
+    let windowManager = WindowManagerService()
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        monitor.start()
+        windowManager.setup()
+
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "menubar.rectangle", accessibilityDescription: "MyMenu")
-            button.action = #selector(togglePopover)
+            if let icon = NSImage(named: "MenuIcon") {
+                icon.isTemplate = true
+                button.image = icon
+            }
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+            button.action = #selector(statusItemClicked)
             button.target = self
         }
 
         popover = NSPopover()
         popover.contentSize = NSSize(width: 340, height: 480)
         popover.behavior = .transient
-        popover.contentViewController = NSHostingController(rootView: ContentView())
+        popover.contentViewController = NSHostingController(
+            rootView: ContentView()
+                .environment(monitor)
+                .environment(diskScanner)
+                .environment(windowManager)
+        )
+    }
+
+    @objc private func statusItemClicked() {
+        guard let event = NSApp.currentEvent else { return }
+        if event.type == .rightMouseUp {
+            let menu = NSMenu()
+            menu.addItem(NSMenuItem(title: "About tully…", action: #selector(showAbout), keyEquivalent: ""))
+            menu.addItem(.separator())
+            menu.addItem(NSMenuItem(title: "Quit tully", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+            statusItem.menu = menu
+            statusItem.button?.performClick(nil)
+            statusItem.menu = nil
+        } else {
+            togglePopover()
+        }
+    }
+
+    @objc private func showAbout() {
+        let alert = NSAlert()
+        alert.messageText = "tully"
+        alert.informativeText = """
+            A lightweight macOS menu bar app for system monitoring and window management.
+
+            github.com/simone98dm/tully
+
+            © 2026 simone98dm
+            """
+        alert.icon = NSImage(systemSymbolName: "menubar.rectangle", accessibilityDescription: nil)
+        alert.addButton(withTitle: "Close")
+        alert.runModal()
     }
 
     @objc private func togglePopover() {

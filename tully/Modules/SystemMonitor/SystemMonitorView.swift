@@ -2,12 +2,14 @@
 import SwiftUI
 
 struct SystemMonitorView: View {
-    @State private var monitor = SystemMonitorService()
-    @State private var diskScanner = DiskScanService()
+    @Environment(SystemMonitorService.self) private var monitor
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                if monitor.snapshot.battery.isPresent {
+                    batterySection
+                }
                 cpuRamSection
                 diskSection
                 networkSection
@@ -15,12 +17,27 @@ struct SystemMonitorView: View {
             }
             .padding(16)
         }
-        .onAppear {
-            monitor.start()
-            diskScanner.scan()
-        }
-        .onDisappear {
-            monitor.stop()
+    }
+
+    // MARK: Battery
+
+    private var batterySection: some View {
+        let b = monitor.snapshot.battery
+        let pct = Double(b.percentage) / 100.0
+        let tint: Color = b.percentage > 20 ? .green : .red
+        let statusText: String = {
+            if b.isCharged { return "Charged" }
+            if b.isCharging {
+                return b.timeRemaining > 0 ? "Charging · \(formatMinutes(b.timeRemaining))" : "Charging…"
+            }
+            return b.timeRemaining > 0 ? "\(formatMinutes(b.timeRemaining)) remaining" : "On Battery"
+        }()
+        return VStack(alignment: .leading, spacing: 8) {
+            Label("Battery", systemImage: b.isCharging ? "battery.100.bolt" : "battery.100")
+                .font(.headline)
+            StatRow(label: "\(b.percentage)%  \(statusText)", value: b.cycleCount > 0 ? "\(b.cycleCount) cycles" : "") {
+                ProgressView(value: pct).tint(tint)
+            }
         }
     }
 
@@ -36,13 +53,22 @@ struct SystemMonitorView: View {
                     .tint(monitor.snapshot.cpuPercent > 80 ? .red : .blue)
             }
 
+            let snap = monitor.snapshot
+            let ramRatio = snap.ramTotal > 0 ? Double(snap.ramUsed) / Double(snap.ramTotal) : 0
             StatRow(
                 label: "RAM",
-                value: "\(formatBytes(monitor.snapshot.ramUsed)) / \(formatBytes(monitor.snapshot.ramTotal))"
+                value: "\(formatBytes(snap.ramUsed)) / \(formatBytes(snap.ramTotal))"
             ) {
-                ProgressView(value: monitor.snapshot.ramTotal > 0
-                    ? Double(monitor.snapshot.ramUsed) / Double(monitor.snapshot.ramTotal)
-                    : 0)
+                ProgressView(value: ramRatio)
+                    .tint(ramRatio > 0.85 ? .red : ramRatio > 0.65 ? .orange : .blue)
+            }
+
+            if snap.ramTotal > 0 {
+                HStack(spacing: 12) {
+                    MemChip(label: "Wired", bytes: snap.ramWired, color: .red)
+                    MemChip(label: "Compressed", bytes: snap.ramCompressed, color: .purple)
+                    MemChip(label: "Free", bytes: snap.ramTotal > snap.ramUsed ? snap.ramTotal - snap.ramUsed : 0, color: .green)
+                }
             }
         }
     }
@@ -62,46 +88,6 @@ struct SystemMonitorView: View {
                     ? Double(monitor.snapshot.diskUsed) / Double(monitor.snapshot.diskTotal)
                     : 0)
             }
-
-            Divider()
-
-            HStack {
-                Text("Large Folders")
-                    .font(.subheadline).bold()
-                Spacer()
-                if diskScanner.isScanning {
-                    ProgressView().controlSize(.small)
-                } else {
-                    if let date = diskScanner.lastScanDate {
-                        Text(date, style: .time)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Button("Rescan") { diskScanner.scan() }
-                        .buttonStyle(.borderless)
-                        .font(.caption)
-                }
-            }
-
-            ForEach(diskScanner.topFolders.prefix(10)) { folder in
-                HStack {
-                    Text(folder.name)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Spacer()
-                    Text(formatBytes(folder.bytes))
-                        .foregroundStyle(.secondary)
-                        .font(.caption)
-                }
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    NSWorkspace.shared.open(folder.url)
-                }
-            }
-
-            if diskScanner.topFolders.isEmpty && !diskScanner.isScanning {
-                Text("No data").foregroundStyle(.secondary).font(.caption)
-            }
         }
     }
 
@@ -117,6 +103,21 @@ struct SystemMonitorView: View {
                 Label("↑ \(formatBytes(Int64(max(0, monitor.snapshot.netOut))))/s", systemImage: "arrow.up")
             }
             .font(.subheadline)
+
+            if !monitor.snapshot.topNet.isEmpty {
+                Text("Active connections")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                ForEach(monitor.snapshot.topNet) { proc in
+                    HStack {
+                        Text(proc.name).font(.caption).lineLimit(1)
+                        Spacer()
+                        Text("\(proc.connections) sockets")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
         }
     }
 
@@ -174,7 +175,27 @@ private struct ProcessRow: View {
     }
 }
 
+private struct MemChip: View {
+    let label: String
+    let bytes: UInt64
+    let color: Color
+
+    var body: some View {
+        VStack(spacing: 1) {
+            Circle().fill(color).frame(width: 6, height: 6)
+            Text(label).font(.system(size: 9)).foregroundStyle(.secondary)
+            Text(formatBytes(bytes)).font(.system(size: 9).monospacedDigit())
+        }
+    }
+}
+
 // MARK: - Formatters
+
+private func formatMinutes(_ minutes: Int) -> String {
+    let h = minutes / 60
+    let m = minutes % 60
+    return h > 0 ? "\(h)h \(m)m" : "\(m)m"
+}
 
 private func formatBytes<T: BinaryInteger>(_ bytes: T) -> String {
     let b = Double(bytes)

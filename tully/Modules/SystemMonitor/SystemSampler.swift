@@ -1,6 +1,7 @@
 // tully/Modules/SystemMonitor/SystemSampler.swift
 import Darwin
 import Foundation
+import IOKit.ps
 
 struct SystemSampler {
     private var prevCPU: host_cpu_load_info_data_t?
@@ -11,21 +12,26 @@ struct SystemSampler {
 
     // Called every 2s on background thread. Returns updated snapshot.
     mutating func sample() -> SystemSnapshot {
-        let cpu   = sampleCPU()
-        let ram   = sampleRAM()
-        let disk  = sampleDisk()
-        let net   = sampleNetwork()
-        let procs = topProcesses()
+        let cpu     = sampleCPU()
+        let ram     = sampleRAM()
+        let disk    = sampleDisk()
+        let net     = sampleNetwork()
+        let procs   = topProcesses()
+        let battery = sampleBattery()
         return SystemSnapshot(
-            cpuPercent: cpu,
-            ramUsed:    ram.used,
-            ramTotal:   ram.total,
-            diskUsed:   disk.used,
-            diskTotal:  disk.total,
-            netIn:      net.inBytes,
-            netOut:     net.outBytes,
-            topCPU:     procs.cpu,
-            topRAM:     procs.ram
+            cpuPercent:    cpu,
+            ramUsed:       ram.used,
+            ramTotal:      ram.total,
+            ramWired:      ram.wired,
+            ramCompressed: ram.compressed,
+            diskUsed:      disk.used,
+            diskTotal:     disk.total,
+            netIn:         net.inBytes,
+            netOut:        net.outBytes,
+            topCPU:        procs.cpu,
+            topRAM:        procs.ram,
+            topNet:        procs.net,
+            battery:       battery
         )
     }
 
@@ -63,7 +69,7 @@ struct SystemSampler {
 
     // MARK: RAM
 
-    private func sampleRAM() -> (used: UInt64, total: UInt64) {
+    private func sampleRAM() -> (used: UInt64, total: UInt64, wired: UInt64, compressed: UInt64) {
         var stats = vm_statistics64_data_t()
         var count = mach_msg_type_number_t(
             MemoryLayout<vm_statistics64_data_t>.size / MemoryLayout<integer_t>.size
@@ -73,11 +79,13 @@ struct SystemSampler {
                 host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &count)
             }
         }
-        guard result == KERN_SUCCESS else { return (0, 0) }
+        guard result == KERN_SUCCESS else { return (0, 0, 0, 0) }
         let page = UInt64(vm_kernel_page_size)
-        let used = UInt64(stats.active_count + stats.wire_count + stats.compressor_page_count) * page
-        let total = UInt64(Foundation.ProcessInfo.processInfo.physicalMemory)
-        return (used, total)
+        let wired      = UInt64(stats.wire_count) * page
+        let compressed = UInt64(stats.compressor_page_count) * page
+        let used       = (UInt64(stats.active_count) + UInt64(stats.wire_count) + UInt64(stats.compressor_page_count)) * page
+        let total      = UInt64(Foundation.ProcessInfo.processInfo.physicalMemory)
+        return (used, total, wired, compressed)
     }
 
     // MARK: Disk
@@ -122,15 +130,16 @@ struct SystemSampler {
 
     // MARK: Top Processes
 
-    private mutating func topProcesses() -> (cpu: [ProcessInfo], ram: [ProcessInfo]) {
+    private mutating func topProcesses() -> (cpu: [ProcessInfo], ram: [ProcessInfo], net: [NetProcessInfo]) {
         let count = proc_listallpids(nil, 0)
-        guard count > 0 else { return ([], []) }
+        guard count > 0 else { return ([], [], []) }
 
         var pids = [Int32](repeating: 0, count: Int(count) + 32)
         let actual = proc_listallpids(&pids, Int32(pids.count * MemoryLayout<Int32>.size))
-        guard actual > 0 else { return ([], []) }
+        guard actual > 0 else { return ([], [], []) }
 
         var results: [ProcessInfo] = []
+        var socketEntries: [(name: String, count: Int)] = []
 
         for i in 0..<Int(actual) {
             let pid = pids[i]
@@ -140,9 +149,7 @@ struct SystemSampler {
             let infoSize = Int32(MemoryLayout<proc_taskinfo>.size)
             guard proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &taskInfo, infoSize) == infoSize else { continue }
 
-            var nameBuf = [CChar](repeating: 0, count: Int(MAXCOMLEN) + 1)
-            proc_name(pid, &nameBuf, UInt32(nameBuf.count))
-            let name = String(cString: nameBuf)
+            let name = friendlyName(for: pid)
 
             let currentTicks = taskInfo.pti_total_user + taskInfo.pti_total_system
             let prevTicks    = prevProcTicks[pid] ?? currentTicks
@@ -153,14 +160,79 @@ struct SystemSampler {
 
             results.append(ProcessInfo(
                 pid: pid,
-                name: name.isEmpty ? "pid:\(pid)" : name,
+                name: name,
                 cpuPercent: cpuPercent,
                 ramBytes: taskInfo.pti_resident_size
             ))
+
+            let socks = socketFDCount(for: pid)
+            if socks > 0 { socketEntries.append((name, socks)) }
         }
 
         let topCPU = Array(results.sorted { $0.cpuPercent > $1.cpuPercent }.prefix(5))
         let topRAM = Array(results.sorted { $0.ramBytes   > $1.ramBytes   }.prefix(5))
-        return (topCPU, topRAM)
+        let topNet = socketEntries
+            .sorted { $0.count > $1.count }
+            .prefix(3)
+            .map { NetProcessInfo(name: $0.name, connections: $0.count) }
+        return (topCPU, topRAM, topNet)
+    }
+
+    // Count open socket file descriptors for a PID.
+    // PROC_PIDLISTFDS = 1, PROX_FDTYPE_SOCKET = 2 (sys/proc_info.h)
+    private func socketFDCount(for pid: Int32) -> Int {
+        let bufSize = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, nil, 0)
+        guard bufSize > 0 else { return 0 }
+        let capacity = Int(bufSize) / MemoryLayout<proc_fdinfo>.size
+        var fds = [proc_fdinfo](repeating: proc_fdinfo(), count: capacity)
+        let written = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, &fds, bufSize)
+        guard written > 0 else { return 0 }
+        let n = Int(written) / MemoryLayout<proc_fdinfo>.size
+        return fds.prefix(n).filter { $0.proc_fdtype == UInt32(PROX_FDTYPE_SOCKET) }.count
+    }
+
+    // MARK: Battery
+
+    private func sampleBattery() -> BatteryInfo {
+        let psInfo = IOPSCopyPowerSourcesInfo().takeRetainedValue()
+        let sources = IOPSCopyPowerSourcesList(psInfo).takeRetainedValue() as [CFTypeRef]
+        guard let source = sources.first,
+              let desc = IOPSGetPowerSourceDescription(psInfo, source)?.takeUnretainedValue() as? [String: Any]
+        else { return BatteryInfo() }
+
+        var info = BatteryInfo()
+        info.isPresent = true
+        info.percentage  = desc[kIOPSCurrentCapacityKey] as? Int ?? 0
+        info.isCharging  = desc[kIOPSIsChargingKey] as? Bool ?? false
+        let state        = desc[kIOPSPowerSourceStateKey] as? String ?? ""
+        info.isCharged   = state == kIOPSACPowerValue && !info.isCharging
+        info.cycleCount  = desc["CycleCount"] as? Int ?? 0
+
+        if info.isCharging {
+            info.timeRemaining = desc[kIOPSTimeToFullChargeKey] as? Int ?? -1
+        } else {
+            info.timeRemaining = desc[kIOPSTimeToEmptyKey] as? Int ?? -1
+        }
+        return info
+    }
+
+    // Returns a human-readable process name using the full executable path.
+    // Prefers the .app bundle name (e.g. "Safari") over the raw binary name.
+    private func friendlyName(for pid: Int32) -> String {
+        var pathBuf = [CChar](repeating: 0, count: 4096)
+        let ret = proc_pidpath(pid, &pathBuf, UInt32(pathBuf.count))
+        guard ret > 0 else {
+            var nameBuf = [CChar](repeating: 0, count: Int(MAXCOMLEN) + 1)
+            proc_name(pid, &nameBuf, UInt32(nameBuf.count))
+            let n = String(cString: nameBuf)
+            return n.isEmpty ? "pid:\(pid)" : n
+        }
+        let fullPath = String(cString: pathBuf)
+        // /Applications/Safari.app/Contents/MacOS/Safari → "Safari"
+        let components = fullPath.components(separatedBy: "/")
+        if let appComponent = components.first(where: { $0.hasSuffix(".app") }) {
+            return String(appComponent.dropLast(4)) // drop ".app"
+        }
+        return URL(fileURLWithPath: fullPath).lastPathComponent
     }
 }

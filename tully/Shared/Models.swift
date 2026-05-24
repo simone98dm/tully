@@ -8,12 +8,16 @@ struct SystemSnapshot: Sendable {
     var cpuPercent: Double = 0
     var ramUsed: UInt64 = 0
     var ramTotal: UInt64 = 0
+    var ramWired: UInt64 = 0
+    var ramCompressed: UInt64 = 0
     var diskUsed: Int64 = 0
     var diskTotal: Int64 = 0
     var netIn: Double = 0   // bytes/s
     var netOut: Double = 0  // bytes/s
     var topCPU: [ProcessInfo] = []
     var topRAM: [ProcessInfo] = []
+    var topNet: [NetProcessInfo] = []
+    var battery: BatteryInfo = BatteryInfo()
 }
 
 struct ProcessInfo: Identifiable, Sendable {
@@ -22,6 +26,21 @@ struct ProcessInfo: Identifiable, Sendable {
     var name: String
     var cpuPercent: Double
     var ramBytes: UInt64
+}
+
+struct NetProcessInfo: Identifiable, Sendable {
+    let id = UUID()
+    var name: String
+    var connections: Int
+}
+
+struct BatteryInfo: Sendable {
+    var isPresent: Bool = false
+    var percentage: Int = 0
+    var isCharging: Bool = false
+    var isCharged: Bool = false
+    var timeRemaining: Int = -1  // minutes; -1 = unknown/calculating
+    var cycleCount: Int = 0
 }
 
 struct FolderInfo: Identifiable, Sendable {

@@ -1,1 +1,34 @@
+# Xcode
+*.xcuserstate
+*.xccheckout
+xcuserdata/
+DerivedData/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Build
+build/
+*.o
+*.d
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# SPM
+.build/
+.swiftpm/
+
+# Superpowers
 .superpowers/
+
+agentdb.rvf
+agentdb.rvf.lock
+CLAUDE.md
+ruvector.db
+docs/

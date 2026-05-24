@@ -7,6 +7,9 @@ struct ContentView: View {
             Tab("System", systemImage: "cpu") {
                 SystemMonitorView()
             }
+            Tab("Disk", systemImage: "internaldrive") {
+                DiskUtilityView()
+            }
             Tab("Windows", systemImage: "rectangle.3.group") {
                 WindowManagerView()
             }

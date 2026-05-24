@@ -3,7 +3,7 @@ import SwiftUI
 import AppKit
 
 struct WindowManagerView: View {
-    @State private var service = WindowManagerService()
+    @Environment(WindowManagerService.self) private var service
     @State private var recordingZone: WindowZone? = nil
     @State private var localMonitor: Any? = nil
 
@@ -15,11 +15,7 @@ struct WindowManagerView: View {
                 PermissionView()
             }
         }
-        .onAppear { service.setup() }
-        .onDisappear {
-            service.teardown()
-            stopRecording()
-        }
+        .onDisappear { stopRecording() }
     }
 
     // MARK: - Shortcut List
