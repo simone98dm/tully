@@ -7,6 +7,7 @@ final class SystemMonitorService {
     private var samplerTask: Task<Void, Never>?
 
     func start() {
+        guard samplerTask == nil else { return }
         samplerTask = Task.detached(priority: .utility) { [weak self] in
             var sampler = SystemSampler()
             while !Task.isCancelled {
