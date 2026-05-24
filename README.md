@@ -2,9 +2,14 @@
 
 A lightweight macOS menu bar utility for system monitoring and window management. No App Store, no subscription, no telemetry.
 
+| System page                               | Windows Tiling                            |
+| ----------------------------------------- | ----------------------------------------- |
+| ![image-1](./screenshot/screenshot-1.png) | ![image-1](./screenshot/screenshot-2.png) |
+
 ## Features
 
 **System Monitor**
+
 - CPU usage, RAM with wired/compressed breakdown, disk used/total
 - Global network bandwidth (↓↑ bytes/s)
 - Top 5 processes by CPU and RAM
@@ -12,12 +17,14 @@ A lightweight macOS menu bar utility for system monitoring and window management
 - Battery status, charge %, time remaining, cycle count (MacBook only)
 
 **Disk & Utility**
+
 - Scans home directory and lists largest folders
 - Donut chart of top 10 folders + "Others"
 - Tap any folder to open it in Finder
 - One-click cleanup via [mole](https://github.com/tw93/mole) (`mo clean` opens in Terminal)
 
 **Window Manager**
+
 - 12 predefined window zones: halves, thirds, two-thirds, fullscreen, corners
 - User-configurable global keyboard shortcuts
 - Conflict detection highlighted in red
@@ -44,6 +51,7 @@ xcodebuild -project tully.xcodeproj -scheme tully -configuration Debug build
 ```
 
 The built app is at:
+
 ```
 ~/Library/Developer/Xcode/DerivedData/tully-*/Build/Products/Debug/tully.app
 ```
