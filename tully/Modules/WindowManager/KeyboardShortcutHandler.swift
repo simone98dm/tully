@@ -20,11 +20,16 @@ final class KeyboardShortcutHandler: @unchecked Sendable {
     private var runLoopSource: CFRunLoopSource?
     private var tapThread: Thread?
     private var tapRunLoop: CFRunLoop?
+    private var selfUnmanaged: Unmanaged<KeyboardShortcutHandler>?
 
     private let lock = NSLock()
     private var _bindings: [ShortcutBinding: WindowZone] = [:]
+    private var _onZoneTriggered: ((WindowZone) -> Void)?
 
-    var onZoneTriggered: ((WindowZone) -> Void)?
+    var onZoneTriggered: ((WindowZone) -> Void)? {
+        get { lock.withLock { _onZoneTriggered } }
+        set { lock.withLock { _onZoneTriggered = newValue } }
+    }
 
     var bindings: [ShortcutBinding: WindowZone] {
         get { lock.withLock { _bindings } }
@@ -33,8 +38,10 @@ final class KeyboardShortcutHandler: @unchecked Sendable {
 
     func start() {
         guard eventTap == nil else { return } // prevent double-start
-        let mask = CGEventMask(1 << UInt64(CGEventType.keyDown.rawValue))
-        let selfPtr = Unmanaged.passRetained(self).toOpaque()
+        let mask = CGEventMask(1 << CGEventType.keyDown.rawValue)
+        let unmanaged = Unmanaged.passRetained(self)
+        selfUnmanaged = unmanaged
+        let selfPtr = unmanaged.toOpaque()
 
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
@@ -44,15 +51,18 @@ final class KeyboardShortcutHandler: @unchecked Sendable {
             callback: eventTapCallback,
             userInfo: selfPtr
         ) else {
-            Unmanaged<KeyboardShortcutHandler>.fromOpaque(selfPtr).release()
+            selfUnmanaged?.release()
+            selfUnmanaged = nil
             return
         }
 
         eventTap = tap
         runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
 
+        let readySemaphore = DispatchSemaphore(value: 0)
         tapThread = Thread {
             self.tapRunLoop = CFRunLoopGetCurrent()
+            readySemaphore.signal()     // signal BEFORE adding source + running
             if let source = self.runLoopSource {
                 CFRunLoopAddSource(self.tapRunLoop, source, .commonModes)
             }
@@ -61,14 +71,18 @@ final class KeyboardShortcutHandler: @unchecked Sendable {
         }
         tapThread?.name = "com.mymenu.eventtap"
         tapThread?.start()
+        readySemaphore.wait()   // wait until tapRunLoop is captured
     }
 
     func stop() {
         if let tap = eventTap { CGEvent.tapEnable(tap: tap, enable: false) }
         if let rl = tapRunLoop { CFRunLoopStop(rl) }
+        selfUnmanaged?.release()
+        selfUnmanaged = nil
         eventTap = nil
         runLoopSource = nil
         tapThread = nil
+        tapRunLoop = nil
     }
 
     // Called from CGEventTap thread — must NOT touch MainActor state directly
