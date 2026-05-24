@@ -3,7 +3,14 @@ import SwiftUI
 
 struct ContentView: View {
     var body: some View {
-        SystemMonitorView()
-            .frame(width: 340, height: 480)
+        TabView {
+            Tab("System", systemImage: "cpu") {
+                SystemMonitorView()
+            }
+            Tab("Windows", systemImage: "rectangle.3.group") {
+                WindowManagerView()
+            }
+        }
+        .frame(width: 340, height: 480)
     }
 }
