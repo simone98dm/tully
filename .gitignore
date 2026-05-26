@@ -32,4 +32,5 @@ agentdb.rvf.lock
 CLAUDE.md
 ruvector.db
 docs/
+!docs/appcast.xml
 .claude/
