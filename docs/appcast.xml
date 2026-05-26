@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <channel>
+        <title>tully</title>
+        <link>https://github.com/simone98dm/tully</link>
+        <description>tully update feed</description>
+        <language>en</language>
+        <item>
+            <title>Version 1.0</title>
+            <pubDate>Tue, 26 May 2026 16:35:32 +0000</pubDate>
+            <sparkle:version>1</sparkle:version>
+            <sparkle:shortVersionString>1.0</sparkle:shortVersionString>
+            <enclosure
+                url="https://github.com/simone98dm/tully/releases/download/v1.0/tully.zip"
+                sparkle:edSignature="exDpoEyctVpUq3TbH7ylQPBO7uL+D8fdGT8r+FxyVocJeHtY/QKU7fR84vSy8EcligH4xjOptiCiNSSElGj2BQ=="
+                length="1646500"
+                type="application/octet-stream" />
+        </item>
+    </channel>
+</rss>
