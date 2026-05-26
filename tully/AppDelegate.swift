@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let diskScanner = DiskScanService()
     let windowManager = WindowManagerService()
     let tabSwitch = TabSwitchService()
+    let updater = UpdaterService()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         monitor.start()
@@ -53,6 +54,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let menu = NSMenu()
             menu.addItem(NSMenuItem(title: "About tully…", action: #selector(showAbout), keyEquivalent: ""))
             menu.addItem(.separator())
+            let updateItem = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
+            menu.addItem(updateItem)
+            menu.addItem(.separator())
             menu.addItem(NSMenuItem(title: "Quit tully", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
             statusItem.menu = menu
             statusItem.button?.performClick(nil)
@@ -60,6 +64,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             togglePopover()
         }
+    }
+
+    @objc private func checkForUpdates() {
+        updater.checkForUpdates()
     }
 
     @objc private func showAbout() {
