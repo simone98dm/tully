@@ -25,8 +25,6 @@ struct DiskUtilityView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                Divider()
-                cleanupSection
             }
             .padding(16)
         }
@@ -139,55 +137,11 @@ struct DiskUtilityView: View {
         }
     }
 
-    // MARK: Cleanup
-
-    private var cleanupSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("Cleanup", systemImage: "wand.and.sparkles")
-                .font(.headline)
-            Text("Uses mole (mo) to clean caches and optimize the system.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Button { runMoleClean() } label: {
-                Label("Cleanup with mole", systemImage: "trash.slash")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.orange)
-        }
-    }
 
     // MARK: Helpers
 
     private func fmtBytes(_ bytes: Int64) -> String {
         ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
-    }
-
-    private func runMoleClean() {
-        let moPaths = ["/opt/homebrew/bin/mo", "/usr/local/bin/mo"]
-        guard moPaths.contains(where: { FileManager.default.fileExists(atPath: $0) }) else {
-            let alert = NSAlert()
-            alert.messageText = "mole not installed"
-            alert.informativeText = "Install it with Homebrew:\nbrew install tw93/mole/mole\n\nThen relaunch tully."
-            alert.addButton(withTitle: "OK")
-            alert.runModal()
-            return
-        }
-        let src = """
-            tell application "Terminal"
-                activate
-                do script "mo clean"
-            end tell
-        """
-        var err: NSDictionary?
-        NSAppleScript(source: src)?.executeAndReturnError(&err)
-        if err != nil {
-            let alert = NSAlert()
-            alert.messageText = "Could not open Terminal"
-            alert.informativeText = "Run manually in Terminal:\nmo clean"
-            alert.addButton(withTitle: "OK")
-            alert.runModal()
-        }
     }
 }
 

@@ -32,3 +32,4 @@ agentdb.rvf.lock
 CLAUDE.md
 ruvector.db
 docs/
+.claude/

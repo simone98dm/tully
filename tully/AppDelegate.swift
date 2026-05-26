@@ -9,10 +9,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let monitor = SystemMonitorService()
     let diskScanner = DiskScanService()
     let windowManager = WindowManagerService()
+    let tabSwitch = TabSwitchService()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         monitor.start()
         windowManager.setup()
+        tabSwitch.setup()
+
+        // Build Tab Switch overlay panel once; service shows/hides it as needed
+        let overlayPanel = TabSwitchOverlayWindow()
+        overlayPanel.contentViewController = NSHostingController(
+            rootView: TabSwitchOverlayView()
+                .environment(tabSwitch)
+        )
+        tabSwitch.overlayPanel = overlayPanel
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
@@ -33,6 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 .environment(monitor)
                 .environment(diskScanner)
                 .environment(windowManager)
+                .environment(tabSwitch)
         )
     }
 

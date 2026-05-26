@@ -21,8 +21,8 @@ struct SystemSnapshot: Sendable {
 }
 
 struct ProcessInfo: Identifiable, Sendable {
-    let id = UUID()
     var pid: Int32
+    var id: Int32 { pid }
     var name: String
     var cpuPercent: Double
     var ramBytes: UInt64
