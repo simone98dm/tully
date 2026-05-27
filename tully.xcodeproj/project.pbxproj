@@ -6,10 +6,6 @@
 	objectVersion = 77;
 	objects = {
 
-/* Begin PBXBuildFile section */
-		BF2ED3222FC370000F2ABD0 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = BF2ED3212FC370000F2ABD0 /* Sparkle */; };
-/* End PBXBuildFile section */
-
 /* Begin PBXFileReference section */
 		BF2ED30A2FC369E000F2ABD0 /* tully.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = tully.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -27,7 +23,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				BF2ED3222FC370000F2ABD0 /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -70,7 +65,6 @@
 			);
 			name = tully;
 			packageProductDependencies = (
-				BF2ED3212FC370000F2ABD0 /* Sparkle */,
 			);
 			productName = tully;
 			productReference = BF2ED30A2FC369E000F2ABD0 /* tully.app */;
@@ -101,7 +95,6 @@
 			mainGroup = BF2ED3012FC369E000F2ABD0;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				BF2ED3202FC370000F2ABD0 /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = BF2ED30B2FC369E000F2ABD0 /* Products */;
@@ -269,9 +262,6 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_SUEnableAutomaticChecks = YES;
-				INFOPLIST_KEY_SUFeedURL = "https://raw.githubusercontent.com/simone98dm/tully/main/docs/appcast.xml";
-				INFOPLIST_KEY_SUPublicEDKey = "98PbAs074HfZqtidL7S5omrzwzhEqJu3ppVFXdtXyus=";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -303,9 +293,6 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_SUEnableAutomaticChecks = YES;
-				INFOPLIST_KEY_SUFeedURL = "https://raw.githubusercontent.com/simone98dm/tully/main/docs/appcast.xml";
-				INFOPLIST_KEY_SUPublicEDKey = "98PbAs074HfZqtidL7S5omrzwzhEqJu3ppVFXdtXyus=";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -344,25 +331,6 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
-
-/* Begin XCRemoteSwiftPackageReference section */
-		BF2ED3202FC370000F2ABD0 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/sparkle-project/Sparkle";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 2.0.0;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		BF2ED3212FC370000F2ABD0 /* Sparkle */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = BF2ED3202FC370000F2ABD0 /* XCRemoteSwiftPackageReference "Sparkle" */;
-			productName = Sparkle;
-		};
-/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = BF2ED3022FC369E000F2ABD0 /* Project object */;
 }

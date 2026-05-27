@@ -1,18 +1,10 @@
 #!/usr/bin/env bash
-# Local release script: build → sign → update appcast → tag
+# Local release script: build → package → tag
 # Usage: ./scripts/release.sh [patch|minor|major]  (default: patch)
 set -euo pipefail
 
 BUMP=${1:-patch}
 REPO="simone98dm/tully"
-
-SPARKLE_SIGN=$(find ~/Library/Developer/Xcode/DerivedData/tully-*/SourcePackages/checkouts/Sparkle \
-  -path "*artifacts/sparkle/Sparkle/bin/sign_update" 2>/dev/null | head -1)
-
-if [ -z "$SPARKLE_SIGN" ]; then
-  echo "sign_update not found — resolve packages first (open in Xcode or xcodebuild -resolvePackageDependencies)"
-  exit 1
-fi
 
 # ── Read current version ───────────────────────────────────────────────────────
 PBXPROJ="tully.xcodeproj/project.pbxproj"
@@ -50,36 +42,16 @@ xcodebuild \
 # ── Package ───────────────────────────────────────────────────────────────────
 APP=$(find ~/Library/Developer/Xcode/DerivedData/tully-*/Build/Products/Release \
   -name "tully.app" -maxdepth 1 | head -1)
-ditto -c -k --keepParent "$APP" tully.zip
-echo "Packaged: $(du -sh tully.zip | cut -f1)"
+ZIP="tully-v${NEW_VER}.zip"
+ditto -c -k --keepParent "$APP" "$ZIP"
+echo "Packaged: $(du -sh "$ZIP" | cut -f1)"
 
-# ── Sign ──────────────────────────────────────────────────────────────────────
-echo "Signing..."
-OUTPUT=$("$SPARKLE_SIGN" tully.zip)   # reads private key from Keychain
-ED_SIG=$(echo "$OUTPUT" | grep -oE 'sparkle:edSignature="[^"]+"' | cut -d'"' -f2)
-LENGTH=$(stat -f%z tully.zip)
-
-if [ -z "$ED_SIG" ]; then
-  echo "Signing failed — check that generate_keys was run and private key is in Keychain"
-  exit 1
-fi
-
-echo "Signature: $ED_SIG"
-
-# ── Update appcast ────────────────────────────────────────────────────────────
-python3 scripts/update_appcast.py \
-  --version "$NEW_VER" \
-  --build   "$NEW_BUILD" \
-  --sig     "$ED_SIG" \
-  --length  "$LENGTH" \
-  --repo    "$REPO"
-
-# ── Commit + tag ──────────────────────────────────────────────────────────────
-git add "$PBXPROJ" docs/appcast.xml
+# ── Tag ───────────────────────────────────────────────────────────────────────
+git add "$PBXPROJ"
 git commit -m "chore: bump version to $NEW_VER"
 git tag "v$NEW_VER"
 
 echo ""
 echo "Done. v$NEW_VER tagged locally."
-echo "Push with: git push origin main --follow-tags"
-echo "Upload tully.zip to: https://github.com/$REPO/releases/tag/v$NEW_VER"
+echo "Push with:  git push origin main --follow-tags"
+echo "Upload $ZIP to: https://github.com/$REPO/releases/tag/v$NEW_VER"
