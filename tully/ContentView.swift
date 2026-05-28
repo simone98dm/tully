@@ -2,7 +2,7 @@
 import SwiftUI
 
 private enum AppTab: Int, CaseIterable {
-    case system, disk, windows, tabSwitch
+    case system, disk, windows, tabSwitch, settings
 
     var title: String {
         switch self {
@@ -10,6 +10,7 @@ private enum AppTab: Int, CaseIterable {
         case .disk:      "Disk"
         case .windows:   "Windows"
         case .tabSwitch: "Switcher"
+        case .settings:  "Settings"
         }
     }
 
@@ -19,6 +20,7 @@ private enum AppTab: Int, CaseIterable {
         case .disk:      "internaldrive"
         case .windows:   "rectangle.3.group"
         case .tabSwitch: "rectangle.on.rectangle.angled"
+        case .settings:  "gearshape"
         }
     }
 }
@@ -56,6 +58,7 @@ struct ContentView: View {
                 case .disk:      DiskUtilityView()
                 case .windows:   WindowManagerView()
                 case .tabSwitch: TabSwitchView()
+                case .settings:  SettingsView()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

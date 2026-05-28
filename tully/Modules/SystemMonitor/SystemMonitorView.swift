@@ -5,6 +5,7 @@ import SwiftUI
 
 struct SystemMonitorView: View {
     @Environment(SystemMonitorService.self) private var monitor
+    @Environment(DiskScanService.self) private var diskScanner
     @State private var processToKill: ProcessInfo? = nil
 
     var body: some View {
@@ -45,11 +46,27 @@ struct SystemMonitorView: View {
         let ramColor: Color = ramRatio > 0.85 ? .red : ramRatio > 0.65 ? .orange : .blue
         let ramTooltip = "\(formatBytes(snap.ramUsed)) / \(formatBytes(snap.ramTotal))"
 
+        let diskUsed  = snap.diskUsed
+        let diskTotal = snap.diskTotal
+        let diskRatio = diskTotal > 0 ? min(1, Double(diskUsed) / Double(diskTotal)) : 0
+        let diskColor: Color = diskRatio > 0.85 ? .red : diskRatio > 0.65 ? .orange : .blue
+        let diskTooltip = diskTotal > 0
+            ? "\(formatBytes(diskUsed)) / \(formatBytes(diskTotal))"
+            : "Tap to scan disk usage"
+
         return HStack(spacing: 0) {
             RingGauge(value: cpuVal, color: cpuColor, label: "CPU", tooltip: cpuTooltip)
                 .frame(maxWidth: .infinity)
             RingGauge(value: ramRatio, color: ramColor, label: "RAM", tooltip: ramTooltip)
                 .frame(maxWidth: .infinity)
+            DiskRingGauge(
+                value: diskRatio,
+                color: diskColor,
+                tooltip: diskTooltip,
+                hasData: diskTotal > 0,
+                diskScanner: diskScanner
+            )
+            .frame(maxWidth: .infinity)
         }
     }
 
@@ -124,7 +141,7 @@ private struct RingGauge: View {
                 Canvas { ctx, size in
                     let center = CGPoint(x: size.width / 2, y: size.height / 2)
                     let radius = min(size.width, size.height) / 2 - 8
-                    let lw: CGFloat = 10
+                    let lw: CGFloat = 5
 
                     var track = Path()
                     track.addArc(center: center, radius: radius,
@@ -140,12 +157,75 @@ private struct RingGauge: View {
                     ctx.stroke(arc, with: .color(color),
                                style: StrokeStyle(lineWidth: lw, lineCap: .round))
                 }
-                .frame(width: 90, height: 90)
+                .frame(width: 70, height: 70)
 
                 Text(String(format: "%.0f%%", value * 100))
-                    .font(.system(size: 17, weight: .semibold).monospacedDigit())
+                    .font(.system(size: 13, weight: .semibold).monospacedDigit())
             }
             Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .help(tooltip)
+    }
+}
+
+// MARK: - DiskRingGauge
+
+private struct DiskRingGauge: View {
+    let value: Double       // 0–1, real used/total ratio
+    let color: Color
+    let tooltip: String
+    let hasData: Bool       // diskTotal > 0 (first sample arrived)
+    let diskScanner: DiskScanService
+
+    var body: some View {
+        VStack(spacing: 6) {
+            ZStack {
+                Canvas { ctx, size in
+                    let center = CGPoint(x: size.width / 2, y: size.height / 2)
+                    let radius = min(size.width, size.height) / 2 - 8
+                    let lw: CGFloat = 5
+
+                    var track = Path()
+                    track.addArc(center: center, radius: radius,
+                                 startAngle: .degrees(-90), endAngle: .degrees(270), clockwise: false)
+                    ctx.stroke(track, with: .color(.secondary.opacity(0.15)),
+                               style: StrokeStyle(lineWidth: lw, lineCap: .round))
+
+                    guard value > 0 else { return }
+                    var arc = Path()
+                    arc.addArc(center: center, radius: radius,
+                               startAngle: .degrees(-90), endAngle: .degrees(-90 + value * 360),
+                               clockwise: false)
+                    ctx.stroke(arc, with: .color(color),
+                               style: StrokeStyle(lineWidth: lw, lineCap: .round))
+                }
+                .frame(width: 70, height: 70)
+
+                if !hasData {
+                    // Waiting for first sampler tick
+                    VStack(spacing: 2) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 14))
+                        Text("Scan")
+                            .font(.system(size: 9))
+                    }
+                    .foregroundStyle(.secondary)
+                } else if diskScanner.isScanning {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Text(String(format: "%.0f%%", value * 100))
+                        .font(.system(size: 13, weight: .semibold).monospacedDigit())
+                }
+            }
+            .contentShape(Circle())
+            .onTapGesture {
+                guard !diskScanner.isScanning && diskScanner.lastScanDate == nil else { return }
+                diskScanner.scan()
+            }
+
+            Text("Disk")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

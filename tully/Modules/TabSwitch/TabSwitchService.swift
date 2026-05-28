@@ -47,6 +47,11 @@ final class TabSwitchService {
         if isEnabled { stopListening(); startListening() }
     }
 
+    func reset() {
+        setEnabled(false)
+        setHotkey(nil)
+    }
+
     // MARK: - Overlay Lifecycle
 
     func showOverlay() {
