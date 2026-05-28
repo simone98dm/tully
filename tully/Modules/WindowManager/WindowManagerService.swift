@@ -70,6 +70,12 @@ final class WindowManagerService {
             .flatMap { WindowZone(rawValue: $0.key) }
     }
 
+    func reset() {
+        shortcuts = [:]
+        UserDefaults.standard.removeObject(forKey: defaultsKey)
+        rebuildHandlerBindings()
+    }
+
     // MARK: - Private
 
     private func screenForWindow(_ window: AXUIElement) -> NSScreen {
