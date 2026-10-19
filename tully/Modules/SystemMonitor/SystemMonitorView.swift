@@ -1,16 +1,16 @@
-// tully/Modules/SystemMonitor/SystemMonitorView.swift
 import AppKit
-import Darwin
 import SwiftUI
 
+/// Popover System tab: usage rings, network, top processes.
 struct SystemMonitorView: View {
     @Environment(SystemMonitorService.self) private var monitor
-    @Environment(DiskScanService.self) private var diskScanner
-    @State private var processToKill: ProcessInfo? = nil
+    @Environment(PopoverState.self) private var popover
+    @Environment(ToastCenter.self) private var toasts
+    @State private var processToKill: ProcessInfo?
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 14) {
                 ringSection
                 Divider()
                 networkSection
@@ -20,53 +20,42 @@ struct SystemMonitorView: View {
             .padding(16)
         }
         .confirmationDialog(
-            "Kill \(processToKill?.name ?? "process")?",
+            "Quit \(processToKill?.name ?? "process")?",
             isPresented: Binding(get: { processToKill != nil }, set: { if !$0 { processToKill = nil } }),
             titleVisibility: .visible
         ) {
-            Button("Kill", role: .destructive) {
-                if let proc = processToKill { Darwin.kill(proc.pid, SIGTERM) }
+            Button("Quit", role: .destructive) {
+                if let process = processToKill { terminate(process) }
                 processToKill = nil
             }
             Button("Cancel", role: .cancel) { processToKill = nil }
         } message: {
-            Text("Sends SIGTERM to the process.")
+            Text("Asks the process to quit (SIGTERM). Unsaved work in it may be lost.")
         }
     }
 
-    // MARK: Ring Gauges
+    // MARK: Rings
 
     private var ringSection: some View {
         let snap = monitor.snapshot
-        let cpuVal = snap.cpuPercent / 100
-        let cpuColor: Color = snap.cpuPercent >= 80 ? .red : .blue
-        let cpuTooltip = String(format: "%.1f%% / 100%%", snap.cpuPercent)
-
-        let ramRatio = snap.ramTotal > 0 ? Double(snap.ramUsed) / Double(snap.ramTotal) : 0
-        let ramColor: Color = ramRatio > 0.85 ? .red : ramRatio > 0.65 ? .orange : .blue
-        let ramTooltip = "\(formatBytes(snap.ramUsed)) / \(formatBytes(snap.ramTotal))"
-
-        let diskUsed  = snap.diskUsed
-        let diskTotal = snap.diskTotal
-        let diskRatio = diskTotal > 0 ? min(1, Double(diskUsed) / Double(diskTotal)) : 0
-        let diskColor: Color = diskRatio > 0.85 ? .red : diskRatio > 0.65 ? .orange : .blue
-        let diskTooltip = diskTotal > 0
-            ? "\(formatBytes(diskUsed)) / \(formatBytes(diskTotal))"
-            : "Tap to scan disk usage"
 
         return HStack(spacing: 0) {
-            RingGauge(value: cpuVal, color: cpuColor, label: "CPU", tooltip: cpuTooltip)
-                .frame(maxWidth: .infinity)
-            RingGauge(value: ramRatio, color: ramColor, label: "RAM", tooltip: ramTooltip)
-                .frame(maxWidth: .infinity)
-            DiskRingGauge(
-                value: diskRatio,
-                color: diskColor,
-                tooltip: diskTooltip,
-                hasData: diskTotal > 0,
-                diskScanner: diskScanner
-            )
-            .frame(maxWidth: .infinity)
+            UsageRing(fraction: snap.cpuPercent / 100, label: "CPU", symbol: "cpu",
+                      detail: String(format: "%.1f%% of all cores", snap.cpuPercent)
+                        + (snap.sensors.cpuTemperature.map { " · \(formatTemperature($0))" } ?? "")) {
+                popover.open(.systemMonitor)
+            }
+            UsageRing(fraction: snap.ramFraction, label: "Memory", symbol: "memorychip",
+                      detail: "\(formatBytes(snap.ramUsed)) of \(formatBytes(snap.ramTotal)) used · "
+                        + "wired \(formatBytes(snap.ramWired)) · compressed \(formatBytes(snap.ramCompressed))") {
+                popover.open(.systemMonitor)
+            }
+            UsageRing(fraction: snap.diskFraction, label: "Disk", symbol: "internaldrive",
+                      detail: snap.diskTotal > 0
+                        ? "\(formatBytes(snap.diskUsed, style: .file)) of \(formatBytes(snap.diskTotal, style: .file)) used"
+                        : "Measuring…") {
+                popover.select(.disk)
+            }
         }
     }
 
@@ -75,167 +64,80 @@ struct SystemMonitorView: View {
     private var networkSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Label("Network", systemImage: "network")
-                    .font(.headline)
+                Label("Network", systemImage: "network").font(.headline)
                 Spacer()
                 HStack(spacing: 10) {
-                    Label(formatBytes(Int64(max(0, monitor.snapshot.netIn))) + "/s",
-                          systemImage: "arrow.down")
-                        .foregroundStyle(.blue)
-                    Label(formatBytes(Int64(max(0, monitor.snapshot.netOut))) + "/s",
-                          systemImage: "arrow.up")
-                        .foregroundStyle(.orange)
+                    Label(formatRate(monitor.snapshot.netIn), systemImage: "arrow.down")
+                        .foregroundStyle(Theme.download)
+                        .accessibilityLabel("Download \(formatRate(monitor.snapshot.netIn))")
+                    Label(formatRate(monitor.snapshot.netOut), systemImage: "arrow.up")
+                        .foregroundStyle(Theme.upload)
+                        .accessibilityLabel("Upload \(formatRate(monitor.snapshot.netOut))")
                 }
-                .font(.caption)
+                .font(.caption.monospacedDigit())
             }
 
-            if monitor.networkHistory.count > 1 {
-                SparklineView(history: monitor.networkHistory)
+            if monitor.history.count > 1 {
+                SparklineView(history: monitor.history.suffix(30).map { ($0.netIn, $0.netOut) })
+                    .accessibilityLabel("Network activity over the last minute")
             }
 
-            HStack(spacing: 4) {
-                Image(systemName: "wifi")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Text(monitor.localIP)
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
+            Label(monitor.localIP, systemImage: "wifi")
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Local IP address \(monitor.localIP)")
+                .textSelection(.enabled)
         }
     }
 
     // MARK: Processes
 
     private var processSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Label("Processes", systemImage: "list.bullet")
-                .font(.headline)
-
+        VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text("Name").frame(maxWidth: .infinity, alignment: .leading)
-                Text("PID").frame(width: 52, alignment: .trailing)
-                Text("RAM").frame(width: 64, alignment: .trailing)
-                Spacer().frame(width: 28)
+                Label("Top Memory", systemImage: "list.bullet").font(.headline)
+                Spacer()
+                Button { popover.open(.systemMonitor) } label: {
+                    Label("All Processes", systemImage: "arrow.up.forward.app")
+                }
+                .buttonStyle(.tully)
+                .font(.caption)
+                .accessibilityHint("Opens the System Monitor window")
+            }
+            HStack {
+                Text("App").frame(maxWidth: .infinity, alignment: .leading)
+                Text("CPU").frame(width: 52, alignment: .trailing)
+                Text("Memory").frame(width: 70, alignment: .trailing)
+                Spacer().frame(width: 26)
             }
             .font(.caption2)
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(.secondary)
+            .accessibilityHidden(true)
 
-            ForEach(monitor.snapshot.topRAM) { proc in
-                ProcessKillRow(info: proc) { processToKill = proc }
+            let groups = monitor.topGroupsByMemory(5)
+            if groups.isEmpty {
+                EmptyStateView(symbol: "hourglass", message: "Collecting process data…")
+            }
+            ForEach(groups) { group in
+                GroupRow(group: group) {
+                    // quitting a group means quitting its app process, not a helper
+                    processToKill = monitor.snapshot.processes.first { $0.pid == group.rootPID } ?? group.members.first
+                }
             }
         }
     }
-}
 
-// MARK: - RingGauge
-
-private struct RingGauge: View {
-    let value: Double   // 0–1
-    let color: Color
-    let label: String
-    let tooltip: String
-
-    var body: some View {
-        VStack(spacing: 6) {
-            ZStack {
-                Canvas { ctx, size in
-                    let center = CGPoint(x: size.width / 2, y: size.height / 2)
-                    let radius = min(size.width, size.height) / 2 - 8
-                    let lw: CGFloat = 5
-
-                    var track = Path()
-                    track.addArc(center: center, radius: radius,
-                                 startAngle: .degrees(-90), endAngle: .degrees(270), clockwise: false)
-                    ctx.stroke(track, with: .color(.secondary.opacity(0.15)),
-                               style: StrokeStyle(lineWidth: lw, lineCap: .round))
-
-                    guard value > 0 else { return }
-                    var arc = Path()
-                    arc.addArc(center: center, radius: radius,
-                               startAngle: .degrees(-90), endAngle: .degrees(-90 + value * 360),
-                               clockwise: false)
-                    ctx.stroke(arc, with: .color(color),
-                               style: StrokeStyle(lineWidth: lw, lineCap: .round))
-                }
-                .frame(width: 70, height: 70)
-
-                Text(String(format: "%.0f%%", value * 100))
-                    .font(.system(size: 13, weight: .semibold).monospacedDigit())
-            }
-            Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+    private func terminate(_ process: ProcessInfo) {
+        switch ProcessTerminator.terminate(pid: process.pid, name: process.name, expectedPath: process.path) {
+        case .terminated: toasts.show("Asked \(process.name) to quit")
+        case .refused(let message), .failed(let message): toasts.show(message, style: .error)
         }
-        .help(tooltip)
-    }
-}
-
-// MARK: - DiskRingGauge
-
-private struct DiskRingGauge: View {
-    let value: Double       // 0–1, real used/total ratio
-    let color: Color
-    let tooltip: String
-    let hasData: Bool       // diskTotal > 0 (first sample arrived)
-    let diskScanner: DiskScanService
-
-    var body: some View {
-        VStack(spacing: 6) {
-            ZStack {
-                Canvas { ctx, size in
-                    let center = CGPoint(x: size.width / 2, y: size.height / 2)
-                    let radius = min(size.width, size.height) / 2 - 8
-                    let lw: CGFloat = 5
-
-                    var track = Path()
-                    track.addArc(center: center, radius: radius,
-                                 startAngle: .degrees(-90), endAngle: .degrees(270), clockwise: false)
-                    ctx.stroke(track, with: .color(.secondary.opacity(0.15)),
-                               style: StrokeStyle(lineWidth: lw, lineCap: .round))
-
-                    guard value > 0 else { return }
-                    var arc = Path()
-                    arc.addArc(center: center, radius: radius,
-                               startAngle: .degrees(-90), endAngle: .degrees(-90 + value * 360),
-                               clockwise: false)
-                    ctx.stroke(arc, with: .color(color),
-                               style: StrokeStyle(lineWidth: lw, lineCap: .round))
-                }
-                .frame(width: 70, height: 70)
-
-                if !hasData {
-                    // Waiting for first sampler tick
-                    VStack(spacing: 2) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 14))
-                        Text("Scan")
-                            .font(.system(size: 9))
-                    }
-                    .foregroundStyle(.secondary)
-                } else if diskScanner.isScanning {
-                    ProgressView().controlSize(.small)
-                } else {
-                    Text(String(format: "%.0f%%", value * 100))
-                        .font(.system(size: 13, weight: .semibold).monospacedDigit())
-                }
-            }
-            .contentShape(Circle())
-            .onTapGesture {
-                guard !diskScanner.isScanning && diskScanner.lastScanDate == nil else { return }
-                diskScanner.scan()
-            }
-
-            Text("Disk")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .help(tooltip)
     }
 }
 
 // MARK: - SparklineView
 
-private struct SparklineView: View {
+struct SparklineView: View {
     let history: [(netIn: Double, netOut: Double)]
 
     var body: some View {
@@ -244,73 +146,69 @@ private struct SparklineView: View {
             let maxVal = max(history.flatMap { [$0.netIn, $0.netOut] }.max() ?? 0, 1024.0)
             let n = history.count
 
-            func pt(_ i: Int, _ v: Double) -> CGPoint {
-                CGPoint(
-                    x: size.width * CGFloat(i) / CGFloat(n - 1),
-                    y: size.height * CGFloat(1 - v / maxVal)
-                )
+            func point(_ i: Int, _ v: Double) -> CGPoint {
+                CGPoint(x: size.width * CGFloat(i) / CGFloat(n - 1), y: size.height * CGFloat(1 - v / maxVal))
             }
-
-            var down = Path()
-            down.move(to: pt(0, history[0].netIn))
-            for i in 1..<n { down.addLine(to: pt(i, history[i].netIn)) }
-            ctx.stroke(down, with: .color(.blue.opacity(0.8)),
-                       style: StrokeStyle(lineWidth: 1.5, lineJoin: .round))
-
-            var up = Path()
-            up.move(to: pt(0, history[0].netOut))
-            for i in 1..<n { up.addLine(to: pt(i, history[i].netOut)) }
-            ctx.stroke(up, with: .color(.orange.opacity(0.8)),
-                       style: StrokeStyle(lineWidth: 1.5, lineJoin: .round))
+            func line(_ value: (Int) -> Double) -> Path {
+                var path = Path()
+                path.move(to: point(0, value(0)))
+                for i in 1..<n { path.addLine(to: point(i, value(i))) }
+                return path
+            }
+            let style = StrokeStyle(lineWidth: 1.5, lineJoin: .round)
+            ctx.stroke(line { history[$0].netIn }, with: .color(Theme.download), style: style)
+            // upload dashed so the two series differ without colour
+            ctx.stroke(line { history[$0].netOut }, with: .color(Theme.upload),
+                       style: StrokeStyle(lineWidth: 1.5, lineJoin: .round, dash: [3, 2]))
         }
-        .background(Color.secondary.opacity(0.05))
+        .background(Color.secondary.opacity(0.06))
         .clipShape(RoundedRectangle(cornerRadius: 4))
         .frame(height: 48)
     }
 }
 
-// MARK: - ProcessKillRow
+// MARK: - ProcessRow
 
-private struct ProcessKillRow: View {
-    let info: ProcessInfo
-    let onKill: () -> Void
+private struct GroupRow: View {
+    let group: ProcessGroup
+    let onQuit: () -> Void
 
     var body: some View {
-        HStack {
-            Text(info.name)
-                .font(.caption)
+        HStack(spacing: 6) {
+            if let path = group.iconPath {
+                Image(nsImage: IconCache.icon(forFile: path))
+                    .resizable()
+                    .frame(width: 16, height: 16)
+                    .accessibilityHidden(true)
+            } else {
+                Image(systemName: "gearshape.2.fill")
+                    .foregroundStyle(.secondary)
+                    .frame(width: 16, height: 16)
+                    .accessibilityHidden(true)
+            }
+            Text(group.name)
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .frame(maxWidth: .infinity, alignment: .leading)
-
-            Text("\(info.pid)")
-                .font(.caption.monospacedDigit())
+            Text(String(format: "%.0f%%", group.cpuPercent))
                 .foregroundStyle(.secondary)
                 .frame(width: 52, alignment: .trailing)
-
-            Text(formatBytes(info.ramBytes))
-                .font(.caption.monospacedDigit())
+            Text(formatBytes(group.ramBytes))
                 .foregroundStyle(.secondary)
-                .frame(width: 64, alignment: .trailing)
-
-            Button(action: onKill) {
+                .frame(width: 70, alignment: .trailing)
+            Button(action: onQuit) {
                 Image(systemName: "xmark.circle")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
             }
-            .buttonStyle(.borderless)
-            .frame(width: 28)
+            .buttonStyle(.tullyIcon)
+            .frame(width: 26)
+            .disabled(group.isSystem)
+            .accessibilityLabel("Quit \(group.name)")
+            .help(group.isSystem ? "System processes can't be quit here" : "Quit \(group.name)")
         }
-        .padding(.vertical, 2)
+        .font(.caption.monospacedDigit())
+        .padding(.vertical, 1)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(group.name), \(formatBytes(group.ramBytes))")
     }
-}
-
-// MARK: - Formatters
-
-private func formatBytes<T: BinaryInteger>(_ bytes: T) -> String {
-    let b = Double(bytes)
-    if b >= 1_073_741_824 { return String(format: "%.1f GB", b / 1_073_741_824) }
-    if b >= 1_048_576     { return String(format: "%.1f MB", b / 1_048_576) }
-    if b >= 1_024         { return String(format: "%.1f KB", b / 1_024) }
-    return "\(bytes) B"
 }

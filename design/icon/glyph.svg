@@ -1,0 +1,5 @@
+<!-- tully glyph (direction A, "Ring gauge"): 3/4 usage arc around a window. Master for any re-draw. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <path d="M23.13 76.87 A38 38 0 1 1 76.87 76.87" fill="none" stroke="#000" stroke-width="13" stroke-linecap="round"/>
+  <rect x="34" y="36" width="32" height="28" rx="5" fill="#000"/>
+</svg>

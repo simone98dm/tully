@@ -35,3 +35,9 @@ docs/
 !docs/appcast.xml
 .claude/
 *.zip
+# Agent tooling state
+.claude-flow/
+.swarm/
+build.log
+dist/
+*.profraw

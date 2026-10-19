@@ -1,60 +1,63 @@
-// tully/Modules/SystemMonitor/DiskScanService.swift
 import Foundation
 
 @Observable
 final class DiskScanService {
-    var topFolders: [FolderInfo] = []
-    var isScanning = false
-    var lastScanDate: Date?
+    private(set) var topFolders: [FolderInfo] = []
+    private(set) var isScanning = false
+    private(set) var lastScanDate: Date?
 
-    private var scanTask: Task<Void, Never>?
+    @ObservationIgnored private var scanTask: Task<Void, Never>?
+    @ObservationIgnored private let root: URL
+
+    init(root: URL = FileManager.default.homeDirectoryForCurrentUser) {
+        self.root = root
+    }
 
     func scan() {
         guard !isScanning else { return }
-        scanTask?.cancel()
         isScanning = true
         topFolders = []
-
+        let root = root
         scanTask = Task.detached(priority: .utility) { [weak self] in
-            let fm = FileManager.default
-            let home = fm.homeDirectoryForCurrentUser
-
-            guard let topLevel = try? fm.contentsOfDirectory(
-                at: home,
-                includingPropertiesForKeys: [.isDirectoryKey],
-                options: [.skipsHiddenFiles]
-            ) else {
-                await MainActor.run { self?.isScanning = false }
-                return
-            }
-
+            let topLevel = (try? FileManager.default.contentsOfDirectory(
+                at: root, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]
+            )) ?? []
             var accumulated: [FolderInfo] = []
-
             for url in topLevel {
                 guard !Task.isCancelled else { break }
-                let bytes = Self.allocatedSize(of: url, fm: fm)
+                let bytes = Self.allocatedSize(of: url)
                 guard bytes > 0 else { continue }
                 accumulated.append(FolderInfo(url: url, bytes: bytes))
-                // Progressive update: sort and push after each folder so UI fills in gradually
-                let sorted = accumulated.sorted { $0.bytes > $1.bytes }
-                await MainActor.run { self?.topFolders = sorted }
+                // progressive update so the list fills in while scanning
+                await self?.publish(accumulated.sorted { $0.bytes > $1.bytes }, finished: false)
             }
-
-            await MainActor.run {
-                self?.isScanning = false
-                self?.lastScanDate = Date()
-            }
+            await self?.publish(accumulated.sorted { $0.bytes > $1.bytes }, finished: true)
         }
     }
 
-    // Recursive allocated size via FileManager — no subprocess, single TCC grant remembered by OS.
-    private nonisolated static func allocatedSize(of url: URL, fm: FileManager) -> Int64 {
-        let keys: Set<URLResourceKey> = [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey]
+    func cancel() {
+        scanTask?.cancel()
+        scanTask = nil
+        isScanning = false
+    }
+
+    func publish(_ folders: [FolderInfo], finished: Bool) {
+        topFolders = folders
+        if finished {
+            isScanning = false
+            lastScanDate = Date()
+        }
+    }
+
+    /// Recursive allocated size via FileManager (no subprocess). Skips unreadable items.
+    nonisolated static func allocatedSize(of url: URL, fm: FileManager = .default) -> Int64 {
+        let keys: Set<URLResourceKey> = [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey, .isDirectoryKey]
+        let ownValues = try? url.resourceValues(forKeys: keys)
+        guard ownValues?.isDirectory == true else {
+            return Int64(ownValues?.totalFileAllocatedSize ?? ownValues?.fileAllocatedSize ?? 0)
+        }
         guard let enumerator = fm.enumerator(
-            at: url,
-            includingPropertiesForKeys: Array(keys),
-            options: [.skipsHiddenFiles],
-            errorHandler: { _, _ in true } // skip inaccessible items silently
+            at: url, includingPropertiesForKeys: Array(keys), options: [], errorHandler: { _, _ in true }
         ) else { return 0 }
 
         var total: Int64 = 0
