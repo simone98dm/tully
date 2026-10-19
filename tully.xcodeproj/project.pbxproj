@@ -8,6 +8,8 @@
 
 /* Begin PBXFileReference section */
 		BF2ED30A2FC369E000F2ABD0 /* tully.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = tully.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		7A0000000000000000000001 /* tullyTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = tullyTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		7A0000000000000000000002 /* tullyUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = tullyUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -16,10 +18,56 @@
 			path = tully;
 			sourceTree = "<group>";
 		};
+		7A0000000000000000000003 /* tullyTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = tullyTests;
+			sourceTree = "<group>";
+		};
+		7A0000000000000000000004 /* tullyUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = tullyUITests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXBuildFile section */
+		7A0000000000000000000030 /* KumquatCore in Frameworks */ = {isa = PBXBuildFile; productRef = 7A0000000000000000000031 /* KumquatCore */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		7A0000000000000000000015 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BF2ED3022FC369E000F2ABD0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = BF2ED3092FC369E000F2ABD0;
+			remoteInfo = tully;
+		};
+		7A0000000000000000000025 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BF2ED3022FC369E000F2ABD0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = BF2ED3092FC369E000F2ABD0;
+			remoteInfo = tully;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		BF2ED3072FC369E000F2ABD0 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7A0000000000000000000030 /* KumquatCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7A0000000000000000000011 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7A0000000000000000000021 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -33,6 +81,8 @@
 			isa = PBXGroup;
 			children = (
 				BF2ED30C2FC369E000F2ABD0 /* tully */,
+				7A0000000000000000000003 /* tullyTests */,
+				7A0000000000000000000004 /* tullyUITests */,
 				BF2ED30B2FC369E000F2ABD0 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +91,8 @@
 			isa = PBXGroup;
 			children = (
 				BF2ED30A2FC369E000F2ABD0 /* tully.app */,
+				7A0000000000000000000001 /* tullyTests.xctest */,
+				7A0000000000000000000002 /* tullyUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -65,10 +117,57 @@
 			);
 			name = tully;
 			packageProductDependencies = (
+				7A0000000000000000000031 /* KumquatCore */,
 			);
 			productName = tully;
 			productReference = BF2ED30A2FC369E000F2ABD0 /* tully.app */;
 			productType = "com.apple.product-type.application";
+		};
+		7A0000000000000000000010 /* tullyTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7A0000000000000000000014 /* Build configuration list for PBXNativeTarget "tullyTests" */;
+			buildPhases = (
+				7A0000000000000000000012 /* Sources */,
+				7A0000000000000000000011 /* Frameworks */,
+				7A0000000000000000000013 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				7A0000000000000000000016 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				7A0000000000000000000003 /* tullyTests */,
+			);
+			name = tullyTests;
+			packageProductDependencies = (
+			);
+			productName = tullyTests;
+			productReference = 7A0000000000000000000001 /* tullyTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		7A0000000000000000000020 /* tullyUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7A0000000000000000000024 /* Build configuration list for PBXNativeTarget "tullyUITests" */;
+			buildPhases = (
+				7A0000000000000000000022 /* Sources */,
+				7A0000000000000000000021 /* Frameworks */,
+				7A0000000000000000000023 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				7A0000000000000000000026 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				7A0000000000000000000004 /* tullyUITests */,
+			);
+			name = tullyUITests;
+			packageProductDependencies = (
+			);
+			productName = tullyUITests;
+			productReference = 7A0000000000000000000002 /* tullyUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 /* End PBXNativeTarget section */
 
@@ -83,6 +182,14 @@
 					BF2ED3092FC369E000F2ABD0 = {
 						CreatedOnToolsVersion = 26.5;
 					};
+					7A0000000000000000000010 = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = BF2ED3092FC369E000F2ABD0;
+					};
+					7A0000000000000000000020 = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = BF2ED3092FC369E000F2ABD0;
+					};
 				};
 			};
 			buildConfigurationList = BF2ED3052FC369E000F2ABD0 /* Build configuration list for PBXProject "tully" */;
@@ -95,6 +202,7 @@
 			mainGroup = BF2ED3012FC369E000F2ABD0;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				7A0000000000000000000032 /* XCLocalSwiftPackageReference "Packages/KumquatCore" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = BF2ED30B2FC369E000F2ABD0 /* Products */;
@@ -102,12 +210,28 @@
 			projectRoot = "";
 			targets = (
 				BF2ED3092FC369E000F2ABD0 /* tully */,
+				7A0000000000000000000010 /* tullyTests */,
+				7A0000000000000000000020 /* tullyUITests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		BF2ED3082FC369E000F2ABD0 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7A0000000000000000000013 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7A0000000000000000000023 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -124,7 +248,34 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		7A0000000000000000000012 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7A0000000000000000000022 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		7A0000000000000000000016 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = BF2ED3092FC369E000F2ABD0 /* tully */;
+			targetProxy = 7A0000000000000000000015 /* PBXContainerItemProxy */;
+		};
+		7A0000000000000000000026 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = BF2ED3092FC369E000F2ABD0 /* tully */;
+			targetProxy = 7A0000000000000000000025 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		BF2ED3132FC369E100F2ABD0 /* Debug */ = {
@@ -259,6 +410,7 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = NO;
 				ENABLE_PREVIEWS = YES;
+				EXCLUDED_SOURCE_FILE_NAMES = "*.db stats.json state.json patterns.json ewc-fisher.json";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -290,6 +442,7 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = NO;
 				ENABLE_PREVIEWS = YES;
+				EXCLUDED_SOURCE_FILE_NAMES = "*.db stats.json state.json patterns.json ewc-fisher.json";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -306,6 +459,88 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		7A0000000000000000000017 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 3;
+				DEVELOPMENT_TEAM = 84G3ZF6R32;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 1.1.0;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.simone98dm.tullyTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/tully.app/Contents/MacOS/tully";
+			};
+			name = Debug;
+		};
+		7A0000000000000000000018 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 3;
+				DEVELOPMENT_TEAM = 84G3ZF6R32;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 1.1.0;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.simone98dm.tullyTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/tully.app/Contents/MacOS/tully";
+			};
+			name = Release;
+		};
+		7A0000000000000000000027 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 3;
+				DEVELOPMENT_TEAM = 84G3ZF6R32;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 1.1.0;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.simone98dm.tullyUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				TEST_TARGET_NAME = tully;
+			};
+			name = Debug;
+		};
+		7A0000000000000000000028 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 3;
+				DEVELOPMENT_TEAM = 84G3ZF6R32;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 1.1.0;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.simone98dm.tullyUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				TEST_TARGET_NAME = tully;
 			};
 			name = Release;
 		};
@@ -330,7 +565,39 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		7A0000000000000000000014 /* Build configuration list for PBXNativeTarget "tullyTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7A0000000000000000000017 /* Debug */,
+				7A0000000000000000000018 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7A0000000000000000000024 /* Build configuration list for PBXNativeTarget "tullyUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7A0000000000000000000027 /* Debug */,
+				7A0000000000000000000028 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		7A0000000000000000000032 /* XCLocalSwiftPackageReference "Packages/KumquatCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/KumquatCore;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		7A0000000000000000000031 /* KumquatCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = KumquatCore;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = BF2ED3022FC369E000F2ABD0 /* Project object */;
 }

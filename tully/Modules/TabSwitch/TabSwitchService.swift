@@ -5,50 +5,51 @@ import CoreGraphics
 import Foundation
 import ScreenCaptureKit
 
-// ponytail: private but stable AX SPI (used by AltTab, Rectangle, yabai); no public AX→CGWindowID mapping exists
-@_silgen_name("_AXUIElementGetWindow")
-private func _AXUIElementGetWindow(_ element: AXUIElement, _ windowID: UnsafeMutablePointer<CGWindowID>) -> AXError
-
 @Observable
 final class TabSwitchService {
-    var isEnabled: Bool = false
-    var hotkey: ShortcutBinding? = nil
-    var isPermissionGranted: Bool = false
-    var hasScreenRecordingPermission: Bool = false
+    private(set) var isEnabled: Bool = false
+    private(set) var hotkey: ShortcutBinding? = nil
+    private(set) var isPermissionGranted: Bool = false
+    private(set) var hasScreenRecordingPermission: Bool = false
 
     private(set) var windows: [WindowInfo] = []
     var selectedIndex: Int = 0
 
-    private let handler = TabHotkeyHandler()
-    var overlayPanel: TabSwitchOverlayWindow?
+    @ObservationIgnored var overlayPanel: TabSwitchOverlayWindow?
 
-    private let defaultsKey = "com.tully.tabswitch"
+    @ObservationIgnored private let handler = TabHotkeyHandler()
+    @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored private let eventTap: EventTapService?
+    @ObservationIgnored private var tapHandlerID: UUID?
 
-    func setup() {
-        isPermissionGranted = AXIsProcessTrusted()
-        hasScreenRecordingPermission = CGPreflightScreenCaptureAccess()
+    static let defaultsKey = "com.tully.tabswitch"
 
-        handler.onActivate = { [weak self] in self?.showOverlay() }
-        handler.onTab      = { [weak self] shift in self?.cycleSelection(reverse: shift) }
-        handler.onConfirm  = { [weak self] in self?.confirmSelection() }
-        handler.onDismiss  = { [weak self] in self?.dismissOverlay() }
-
+    init(defaults: UserDefaults = .standard, eventTap: EventTapService? = nil) {
+        self.defaults = defaults
+        self.eventTap = eventTap
+        handler.onActivate = { [weak self] in MainActor.assumeIsolated { self?.showOverlay() } }
+        handler.onTab      = { [weak self] shift in MainActor.assumeIsolated { self?.cycleSelection(reverse: shift) } }
+        handler.onConfirm  = { [weak self] in MainActor.assumeIsolated { self?.confirmSelection() } }
+        handler.onDismiss  = { [weak self] in MainActor.assumeIsolated { self?.dismissOverlay() } }
         loadSettings()
-        if isEnabled, hotkey != nil { startListening() }
     }
 
-    func teardown() { handler.stop() }
+    func updatePermissions(accessibility: Bool, screenRecording: Bool) {
+        isPermissionGranted = accessibility
+        hasScreenRecordingPermission = screenRecording
+        updateListening()
+    }
 
     func setEnabled(_ value: Bool) {
         isEnabled = value
         saveSettings()
-        if value { startListening() } else { stopListening() }
+        updateListening()
     }
 
     func setHotkey(_ binding: ShortcutBinding?) {
         hotkey = binding
         saveSettings()
-        if isEnabled { stopListening(); startListening() }
+        updateListening()
     }
 
     func reset() {
@@ -58,12 +59,20 @@ final class TabSwitchService {
 
     // MARK: - Overlay Lifecycle
 
-    func showOverlay() {
-        windows = enumerateWindows()
+    /// `list` overrides window enumeration (tests).
+    func showOverlay(with list: [WindowInfo]? = nil) {
+        windows = list ?? enumerateWindows()
         selectedIndex = min(1, max(0, windows.count - 1))
         handler.isOverlayVisible = true
         positionOverlay()
         overlayPanel?.orderFrontRegardless()
+        // the modifier may have been released before the overlay appeared (a quick tap): switch right away
+        // NSEvent.modifierFlags is stale while tully is in the background; ask the window server
+        if list == nil, let hotkey, hotkey.modifiers != 0,
+           CGEventSource.flagsState(.combinedSessionState).rawValue & hotkey.modifiers == 0 {
+            confirmSelection()
+            return
+        }
         Task { await captureThumbnails() }
     }
 
@@ -76,8 +85,7 @@ final class TabSwitchService {
 
     func confirmSelection() {
         guard selectedIndex < windows.count else { dismissOverlay(); return }
-        let win = windows[selectedIndex]
-        raiseWindow(pid: win.pid, windowID: win.id)
+        WindowCatalog.activate(windows[selectedIndex])
         dismissOverlay()
     }
 
@@ -105,44 +113,20 @@ final class TabSwitchService {
         )
     }
 
-    private func startListening() {
-        guard let hk = hotkey else { return }
-        handler.hotkey = hk
-        handler.start()
-    }
-
-    private func stopListening() { handler.stop() }
-
-    private func enumerateWindows() -> [WindowInfo] {
-        guard let list = CGWindowListCopyWindowInfo(
-            [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID
-        ) as? [[String: Any]] else { return [] }
-
-        let myPID = pid_t(Foundation.ProcessInfo.processInfo.processIdentifier)
-        var seen = Set<CGWindowID>()
-        var results: [WindowInfo] = []
-
-        for dict in list {
-            guard
-                let layer    = dict[kCGWindowLayer as String] as? Int32, layer == 0,
-                let pidInt   = dict[kCGWindowOwnerPID as String] as? Int, pid_t(pidInt) != myPID,
-                let widInt   = dict[kCGWindowNumber as String] as? Int,
-                let appName  = dict[kCGWindowOwnerName as String] as? String,
-                let alpha    = dict[kCGWindowAlpha as String] as? Double, alpha > 0,
-                let bounds   = dict[kCGWindowBounds as String] as? [String: CGFloat],
-                (bounds["Width"] ?? 0) > 60,
-                (bounds["Height"] ?? 0) > 60
-            else { continue }
-
-            let wid = CGWindowID(widInt)
-            guard seen.insert(wid).inserted else { continue }
-
-            let title = dict[kCGWindowName as String] as? String ?? ""
-            let icon = NSRunningApplication(processIdentifier: pid_t(pidInt))?.icon
-            results.append(WindowInfo(id: wid, appName: appName, windowTitle: title, pid: pid_t(pidInt), appIcon: icon))
+    private func updateListening() {
+        handler.hotkey = hotkey
+        let shouldListen = isEnabled && hotkey != nil && isPermissionGranted
+        if shouldListen, tapHandlerID == nil, let eventTap {
+            let handler = handler
+            tapHandlerID = eventTap.add({ type, event in handler.handle(type: type, event: event) }, reset: { handler.reset() })
+        } else if !shouldListen, let id = tapHandlerID {
+            eventTap?.remove(id)
+            tapHandlerID = nil
+            if handler.isOverlayVisible { dismissOverlay() }
         }
-        return results
     }
+
+    private func enumerateWindows() -> [WindowInfo] { WindowCatalog.onScreenWindows() }
 
     private func captureThumbnails() async {
         guard CGPreflightScreenCaptureAccess() else { return }
@@ -169,52 +153,22 @@ final class TabSwitchService {
         }
     }
 
-    private func raiseWindow(pid: pid_t, windowID: CGWindowID) {
-        let app = NSRunningApplication(processIdentifier: pid)
-        let appEl = AXUIElementCreateApplication(pid)
-        var windowsRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(appEl, kAXWindowsAttribute as CFString, &windowsRef) == .success,
-              let axWindows = windowsRef as? [AXUIElement]
-        else {
-            app?.activate()
-            return
-        }
-
-        // Match by exact window ID: position matching picks the wrong window
-        // when several windows of the same app share an origin (e.g. maximized).
-        let match = axWindows.first { axWin in
-            var id: CGWindowID = 0
-            return _AXUIElementGetWindow(axWin, &id) == .success && id == windowID
-        }
-
-        if let win = match ?? axWindows.first {
-            // Make it main/focused before activating, otherwise activation
-            // brings the app's previous key window back to the front.
-            AXUIElementSetAttributeValue(win, kAXMainAttribute as CFString, kCFBooleanTrue)
-            AXUIElementSetAttributeValue(appEl, kAXFocusedWindowAttribute as CFString, win)
-            app?.activate()
-            AXUIElementPerformAction(win, kAXRaiseAction as CFString)
-        } else {
-            app?.activate()
-        }
-    }
-
     // MARK: - Persistence
 
     private func loadSettings() {
-        isEnabled = UserDefaults.standard.bool(forKey: defaultsKey + ".enabled")
-        if let data = UserDefaults.standard.data(forKey: defaultsKey + ".hotkey"),
+        isEnabled = defaults.bool(forKey: Self.defaultsKey + ".enabled")
+        if let data = defaults.data(forKey: Self.defaultsKey + ".hotkey"),
            let decoded = try? JSONDecoder().decode(ShortcutBinding.self, from: data) {
             hotkey = decoded
         }
     }
 
     private func saveSettings() {
-        UserDefaults.standard.set(isEnabled, forKey: defaultsKey + ".enabled")
+        defaults.set(isEnabled, forKey: Self.defaultsKey + ".enabled")
         if let hk = hotkey, let encoded = try? JSONEncoder().encode(hk) {
-            UserDefaults.standard.set(encoded, forKey: defaultsKey + ".hotkey")
+            defaults.set(encoded, forKey: Self.defaultsKey + ".hotkey")
         } else {
-            UserDefaults.standard.removeObject(forKey: defaultsKey + ".hotkey")
+            defaults.removeObject(forKey: Self.defaultsKey + ".hotkey")
         }
     }
 }

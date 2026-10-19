@@ -2,7 +2,7 @@
 import SwiftUI
 
 @main
-struct MyMenuApp: App {
+struct TullyApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
 
     var body: some Scene {

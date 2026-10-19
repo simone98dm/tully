@@ -1,37 +1,46 @@
-// tully/Modules/SystemMonitor/SystemSampler.swift
 import Darwin
 import Foundation
-import IOKit.ps
 
-struct SystemSampler {
+nonisolated struct SystemSampler {
     private var prevCPU: host_cpu_load_info_data_t?
     private var prevNetIn: UInt64 = 0
     private var prevNetOut: UInt64 = 0
     private var prevProcTicks: [Int32: UInt64] = [:]
-    private let sampleInterval: Double = 2.0
+    private var lastSampleTime: ContinuousClock.Instant?
+    /// Executable path and display name per pid; looking them up for every process each tick is the
+    /// sampler's biggest cost. Entries for exited pids are dropped every sample.
+    private var identityCache: [Int32: (path: String, name: String)] = [:]
+    private let sensorReader = SensorReader()
+    /// pti_total_* are Mach absolute-time ticks (not ns on Apple Silicon).
+    private static let nanosecondsPerTick: Double = {
+        var timebase = mach_timebase_info_data_t()
+        mach_timebase_info(&timebase)
+        return Double(timebase.numer) / Double(timebase.denom)
+    }()
 
-    // Called every 2s on background thread. Returns updated snapshot.
-    mutating func sample() -> SystemSnapshot {
-        let cpu     = sampleCPU()
-        let ram     = sampleRAM()
-        let disk    = sampleDisk()
-        let net     = sampleNetwork()
-        let procs   = topProcesses()
-        let battery = sampleBattery()
+    // Called periodically on a background task. Returns updated snapshot.
+    /// `includeProcesses: false` skips the per-process walk and sensors (nothing on screen needs them).
+    mutating func sample(includeProcesses: Bool = true) -> SystemSnapshot {
+        let now = ContinuousClock.now
+        let elapsed = lastSampleTime.map { (now - $0) / .seconds(1) } ?? 1
+        lastSampleTime = now
+        let interval = max(elapsed, 0.1)
+
+        let ram  = sampleRAM()
+        let disk = sampleDisk()
+        let net  = sampleNetwork(interval: interval)
         return SystemSnapshot(
-            cpuPercent:    cpu,
-            ramUsed:       ram.used,
-            ramTotal:      ram.total,
-            ramWired:      ram.wired,
+            cpuPercent: sampleCPU(),
+            ramUsed:    ram.used,
+            ramTotal:   ram.total,
+            ramWired:   ram.wired,
             ramCompressed: ram.compressed,
-            diskUsed:      disk.used,
-            diskTotal:     disk.total,
-            netIn:         net.inBytes,
-            netOut:        net.outBytes,
-            topCPU:        procs.cpu,
-            topRAM:        procs.ram,
-            topNet:        procs.net,
-            battery:       battery
+            diskUsed:   disk.used,
+            diskTotal:  disk.total,
+            netIn:      net.inBytes,
+            netOut:     net.outBytes,
+            processes:  includeProcesses ? sampleProcesses(interval: interval) : [],
+            sensors:    includeProcesses ? sensorReader.read() : SensorReadings()
         )
     }
 
@@ -61,10 +70,19 @@ struct SystemSampler {
         let pIdle   = Double(prev.cpu_ticks.2)
         let pNice   = Double(prev.cpu_ticks.3)
 
-        let totalDelta = (user + system + idle + nice) - (pUser + pSystem + pIdle + pNice)
-        let usedDelta  = (user + system + nice) - (pUser + pSystem + pNice)
+        return Self.cpuPercent(used: user + system + nice, idle: idle, previousUsed: pUser + pSystem + pNice, previousIdle: pIdle)
+    }
+
+    static func cpuPercent(used: Double, idle: Double, previousUsed: Double, previousIdle: Double) -> Double {
+        let totalDelta = (used + idle) - (previousUsed + previousIdle)
+        let usedDelta = used - previousUsed
         guard totalDelta > 0 else { return 0 }
-        return min(100.0, (usedDelta / totalDelta) * 100.0)
+        return min(100.0, max(0, usedDelta / totalDelta * 100.0))
+    }
+
+    /// Bytes per second from two counter readings; a counter that went backwards (interface reset) reads 0.
+    static func rate(current: UInt64, previous: UInt64, interval: Double) -> Double {
+        current >= previous ? Double(current - previous) / max(interval, 0.1) : 0
     }
 
     // MARK: RAM
@@ -80,12 +98,15 @@ struct SystemSampler {
             }
         }
         guard result == KERN_SUCCESS else { return (0, 0, 0, 0) }
-        let page = UInt64(vm_kernel_page_size)
-        let wired      = UInt64(stats.wire_count) * page
-        let compressed = UInt64(stats.compressor_page_count) * page
-        let used       = (UInt64(stats.active_count) + UInt64(stats.wire_count) + UInt64(stats.compressor_page_count)) * page
-        let total      = UInt64(Foundation.ProcessInfo.processInfo.physicalMemory)
-        return (used, total, wired, compressed)
+        let memory = Self.memoryUsage(active: UInt64(stats.active_count), wired: UInt64(stats.wire_count),
+                                      compressed: UInt64(stats.compressor_page_count), pageSize: UInt64(vm_kernel_page_size))
+        return (memory.used, UInt64(Foundation.ProcessInfo.processInfo.physicalMemory), memory.wired, memory.compressed)
+    }
+
+    /// "Used" memory as Activity Monitor counts it: active + wired + compressed pages.
+    static func memoryUsage(active: UInt64, wired: UInt64, compressed: UInt64, pageSize: UInt64)
+        -> (used: UInt64, wired: UInt64, compressed: UInt64) {
+        ((active + wired + compressed) * pageSize, wired * pageSize, compressed * pageSize)
     }
 
     // MARK: Disk
@@ -100,7 +121,7 @@ struct SystemSampler {
 
     // MARK: Network
 
-    private mutating func sampleNetwork() -> (inBytes: Double, outBytes: Double) {
+    private mutating func sampleNetwork(interval: Double) -> (inBytes: Double, outBytes: Double) {
         var ifaddr: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&ifaddr) == 0, let first = ifaddr else { return (0, 0) }
         defer { freeifaddrs(first) }
@@ -121,118 +142,88 @@ struct SystemSampler {
             cursor = cur.pointee.ifa_next
         }
 
-        let inDelta  = totalIn  >= prevNetIn  ? Double(totalIn  - prevNetIn)  : 0
-        let outDelta = totalOut >= prevNetOut ? Double(totalOut - prevNetOut) : 0
-        prevNetIn  = totalIn
-        prevNetOut = totalOut
-        return (inDelta / sampleInterval, outDelta / sampleInterval)
+        defer {
+            prevNetIn = totalIn
+            prevNetOut = totalOut
+        }
+        // the first sample has no baseline; report 0 rather than the counters since boot
+        guard prevNetIn > 0 || prevNetOut > 0 else { return (0, 0) }
+        return (Self.rate(current: totalIn, previous: prevNetIn, interval: interval),
+                Self.rate(current: totalOut, previous: prevNetOut, interval: interval))
     }
 
-    // MARK: Top Processes
+    // MARK: Processes
 
-    private mutating func topProcesses() -> (cpu: [ProcessInfo], ram: [ProcessInfo], net: [NetProcessInfo]) {
+    private mutating func sampleProcesses(interval: Double) -> [ProcessInfo] {
         let count = proc_listallpids(nil, 0)
-        guard count > 0 else { return ([], [], []) }
+        guard count > 0 else { return [] }
 
         var pids = [Int32](repeating: 0, count: Int(count) + 32)
         let actual = proc_listallpids(&pids, Int32(pids.count * MemoryLayout<Int32>.size))
-        guard actual > 0 else { return ([], [], []) }
+        guard actual > 0 else { return [] }
 
         var results: [ProcessInfo] = []
-        var socketEntries: [(name: String, count: Int)] = []
+        var seenTicks: [Int32: UInt64] = [:]
 
-        for i in 0..<Int(actual) {
-            let pid = pids[i]
-            guard pid > 0 else { continue }
-
+        for pid in pids.prefix(Int(actual)) where pid > 0 {
             var taskInfo = proc_taskinfo()
-            let infoSize = Int32(MemoryLayout<proc_taskinfo>.size)
-            guard proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &taskInfo, infoSize) == infoSize else { continue }
+            let taskSize = Int32(MemoryLayout<proc_taskinfo>.size)
+            guard proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &taskInfo, taskSize) == taskSize else { continue }
 
-            let name = friendlyName(for: pid)
+            var bsdInfo = proc_bsdinfo()
+            let bsdSize = Int32(MemoryLayout<proc_bsdinfo>.size)
+            let hasBSD = proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &bsdInfo, bsdSize) == bsdSize
 
             let currentTicks = taskInfo.pti_total_user + taskInfo.pti_total_system
             let prevTicks    = prevProcTicks[pid] ?? currentTicks
-            prevProcTicks[pid] = currentTicks
+            seenTicks[pid] = currentTicks
+            let tickDeltaNs  = currentTicks > prevTicks ? Double(currentTicks - prevTicks) * Self.nanosecondsPerTick : 0
 
-            let tickDeltaNs = currentTicks > prevTicks ? Double(currentTicks - prevTicks) : 0
-            let cpuPercent  = (tickDeltaNs / (sampleInterval * 1_000_000_000.0)) * 100.0
-
+            let identity = identityCache[pid] ?? {
+                let path = executablePath(for: pid)
+                return (path, friendlyName(for: pid, path: path))
+            }()
+            identityCache[pid] = identity
+            let path = identity.path
             results.append(ProcessInfo(
                 pid: pid,
-                name: name,
-                cpuPercent: cpuPercent,
+                parentPID: hasBSD ? Int32(bsdInfo.pbi_ppid) : 0,
+                name: identity.name,
+                path: path,
+                isSystem: Self.isSystemProcess(path: path, uid: hasBSD ? bsdInfo.pbi_uid : 0),
+                cpuPercent: tickDeltaNs / (interval * 1_000_000_000.0) * 100.0,
                 ramBytes: taskInfo.pti_resident_size
             ))
-
-            let socks = socketFDCount(for: pid)
-            if socks > 0 { socketEntries.append((name, socks)) }
         }
-
-        let topCPU = Array(results.sorted { $0.cpuPercent > $1.cpuPercent }.prefix(5))
-        let topRAM = Array(results.sorted { $0.ramBytes   > $1.ramBytes   }.prefix(5))
-        let topNet = socketEntries
-            .sorted { $0.count > $1.count }
-            .prefix(3)
-            .map { NetProcessInfo(name: $0.name, connections: $0.count) }
-        return (topCPU, topRAM, topNet)
+        prevProcTicks = seenTicks // drop exited pids
+        identityCache = identityCache.filter { seenTicks[$0.key] != nil }
+        return results
     }
 
-    // Count open socket file descriptors for a PID.
-    // PROC_PIDLISTFDS = 1, PROX_FDTYPE_SOCKET = 2 (sys/proc_info.h)
-    private func socketFDCount(for pid: Int32) -> Int {
-        let bufSize = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, nil, 0)
-        guard bufSize > 0 else { return 0 }
-        let capacity = Int(bufSize) / MemoryLayout<proc_fdinfo>.size
-        var fds = [proc_fdinfo](repeating: proc_fdinfo(), count: capacity)
-        let written = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, &fds, bufSize)
-        guard written > 0 else { return 0 }
-        let n = Int(written) / MemoryLayout<proc_fdinfo>.size
-        return fds.prefix(n).filter { $0.proc_fdtype == UInt32(PROX_FDTYPE_SOCKET) }.count
+    private static func isSystemProcess(path: String, uid: uid_t) -> Bool {
+        guard !path.contains(".app/") else { return false }
+        return uid == 0 || ["/System/", "/usr/", "/sbin/", "/bin/", "/Library/Apple/"].contains { path.hasPrefix($0) }
     }
 
-    // MARK: Battery
-
-    private func sampleBattery() -> BatteryInfo {
-        let psInfo = IOPSCopyPowerSourcesInfo().takeRetainedValue()
-        let sources = IOPSCopyPowerSourcesList(psInfo).takeRetainedValue() as [CFTypeRef]
-        guard let source = sources.first,
-              let desc = IOPSGetPowerSourceDescription(psInfo, source)?.takeUnretainedValue() as? [String: Any]
-        else { return BatteryInfo() }
-
-        var info = BatteryInfo()
-        info.isPresent = true
-        info.percentage  = desc[kIOPSCurrentCapacityKey] as? Int ?? 0
-        info.isCharging  = desc[kIOPSIsChargingKey] as? Bool ?? false
-        let state        = desc[kIOPSPowerSourceStateKey] as? String ?? ""
-        info.isCharged   = state == kIOPSACPowerValue && !info.isCharging
-        info.cycleCount  = desc["CycleCount"] as? Int ?? 0
-
-        if info.isCharging {
-            info.timeRemaining = desc[kIOPSTimeToFullChargeKey] as? Int ?? -1
-        } else {
-            info.timeRemaining = desc[kIOPSTimeToEmptyKey] as? Int ?? -1
-        }
-        return info
+    private func executablePath(for pid: Int32) -> String {
+        var pathBuf = [CChar](repeating: 0, count: 4096)
+        guard proc_pidpath(pid, &pathBuf, UInt32(pathBuf.count)) > 0 else { return "" }
+        return String(cString: pathBuf)
     }
 
     // Returns a human-readable process name using the full executable path.
     // Prefers the .app bundle name (e.g. "Safari") over the raw binary name.
-    private func friendlyName(for pid: Int32) -> String {
-        var pathBuf = [CChar](repeating: 0, count: 4096)
-        let ret = proc_pidpath(pid, &pathBuf, UInt32(pathBuf.count))
-        guard ret > 0 else {
+    private func friendlyName(for pid: Int32, path: String) -> String {
+        guard !path.isEmpty else {
             var nameBuf = [CChar](repeating: 0, count: Int(MAXCOMLEN) + 1)
             proc_name(pid, &nameBuf, UInt32(nameBuf.count))
             let n = String(cString: nameBuf)
             return n.isEmpty ? "pid:\(pid)" : n
         }
-        let fullPath = String(cString: pathBuf)
         // /Applications/Safari.app/Contents/MacOS/Safari → "Safari"
-        let components = fullPath.components(separatedBy: "/")
-        if let appComponent = components.first(where: { $0.hasSuffix(".app") }) {
-            return String(appComponent.dropLast(4)) // drop ".app"
+        if let appComponent = path.components(separatedBy: "/").first(where: { $0.hasSuffix(".app") }) {
+            return String(appComponent.dropLast(4))
         }
-        return URL(fileURLWithPath: fullPath).lastPathComponent
+        return URL(fileURLWithPath: path).lastPathComponent
     }
 }

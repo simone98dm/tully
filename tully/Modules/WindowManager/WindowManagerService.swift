@@ -1,62 +1,66 @@
-// tully/Modules/WindowManager/WindowManagerService.swift
 import AppKit
 import ApplicationServices
 
 @Observable
 final class WindowManagerService {
-    var isPermissionGranted: Bool = false
-    var shortcuts: [String: ShortcutBinding] = [:]
+    static let shortcutsKey = "tully.windowManager.shortcuts"
+    static let legacyShortcutsKey = "com.mymenu.shortcuts"
 
-    private let defaultsKey = "com.mymenu.shortcuts"
-    private let handler = KeyboardShortcutHandler()
+    static let autoLayoutKey = "tully.windowManager.autoLayout"
+    static let autoLayoutDelayKey = "tully.windowManager.autoLayoutDelay"
+    static let autoLayoutDelays: [Double] = [3, 6, 10, 20]
 
-    func setup() {
-        isPermissionGranted = AXIsProcessTrusted()
-        loadShortcuts()
-        guard isPermissionGranted else { return }
-        rebuildHandlerBindings()
+    private(set) var isPermissionGranted = false
+    private(set) var shortcuts: [String: ShortcutBinding] = [:]
+
+    /// After snapping to a side, suggest other windows for the space that's left.
+    var isAutoLayoutEnabled: Bool {
+        didSet { defaults.set(isAutoLayoutEnabled, forKey: Self.autoLayoutKey) }
+    }
+    /// Seconds the suggestions stay up without interaction.
+    var autoLayoutDelay: Double {
+        didSet { defaults.set(autoLayoutDelay, forKey: Self.autoLayoutDelayKey) }
+    }
+
+    /// Called after every snap (zone shortcut or ring) with the window, its new frame and screen.
+    @ObservationIgnored var onSnap: ((AXUIElement, CGRect, NSScreen) -> Void)?
+
+    @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored private let eventTap: EventTapService?
+    @ObservationIgnored private let handler = KeyboardShortcutHandler()
+    @ObservationIgnored private var tapHandlerID: UUID?
+
+    init(defaults: UserDefaults = .standard, eventTap: EventTapService? = nil) {
+        self.defaults = defaults
+        self.eventTap = eventTap
+        isAutoLayoutEnabled = defaults.object(forKey: Self.autoLayoutKey) as? Bool ?? true
+        let delay = defaults.double(forKey: Self.autoLayoutDelayKey)
+        autoLayoutDelay = Self.autoLayoutDelays.contains(delay) ? delay : 6
+        shortcuts = Self.loadShortcuts(from: defaults)
         handler.onZoneTriggered = { [weak self] zone in
-            self?.moveActiveWindow(to: zone)
+            MainActor.assumeIsolated { self?.moveFocusedWindow(to: zone) }
         }
-        handler.start()
+        rebuildHandlerBindings()
     }
 
-    func teardown() {
-        handler.stop()
-    }
-
-    func rebuildHandlerBindings() {
-        var map: [ShortcutBinding: WindowZone] = [:]
-        for zone in WindowZone.allCases {
-            if let binding = shortcuts[zone.rawValue] {
-                map[binding] = zone
-            }
+    /// Starts or stops listening for shortcuts as Accessibility access comes and goes.
+    func updatePermission(_ granted: Bool) {
+        isPermissionGranted = granted
+        if granted, tapHandlerID == nil, let eventTap {
+            let handler = handler
+            tapHandlerID = eventTap.add { type, event in handler.handle(type: type, event: event) }
+        } else if !granted, let id = tapHandlerID {
+            eventTap?.remove(id)
+            tapHandlerID = nil
         }
-        handler.bindings = map
     }
 
-    func moveActiveWindow(to zone: WindowZone) {
-        guard isPermissionGranted else { return }
+    // MARK: - Shortcuts
 
-        let systemElement = AXUIElementCreateSystemWide()
-        var focusedApp: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(
-            systemElement, kAXFocusedApplicationAttribute as CFString, &focusedApp
-        ) == .success, let app = focusedApp else { return }
-
-        var focusedWindow: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(
-            (app as! AXUIElement), kAXFocusedWindowAttribute as CFString, &focusedWindow
-        ) == .success, let window = focusedWindow else { return }
-
-        let windowElement = window as! AXUIElement
-        let screen = screenForWindow(windowElement)
-        let targetFrame = frame(for: zone, on: screen)
-        applyFrame(targetFrame, to: windowElement, screen: screen)
-    }
-
+    /// Assigning a combo another zone uses moves it here (the recorder asks first).
     func setShortcut(_ binding: ShortcutBinding?, for zone: WindowZone) {
         if let binding {
+            shortcuts = shortcuts.filter { $0.value != binding }
             shortcuts[zone.rawValue] = binding
         } else {
             shortcuts.removeValue(forKey: zone.rawValue)
@@ -72,47 +76,74 @@ final class WindowManagerService {
 
     func reset() {
         shortcuts = [:]
-        UserDefaults.standard.removeObject(forKey: defaultsKey)
+        isAutoLayoutEnabled = true
+        autoLayoutDelay = 6
+        [Self.shortcutsKey, Self.autoLayoutKey, Self.autoLayoutDelayKey].forEach(defaults.removeObject(forKey:))
         rebuildHandlerBindings()
     }
 
-    // MARK: - Private
+    // MARK: - Moving windows
 
-    private func screenForWindow(_ window: AXUIElement) -> NSScreen {
+    func moveFocusedWindow(to zone: WindowZone) {
+        guard isPermissionGranted, let window = Self.focusedWindow() else { return }
+        move(window, to: zone, on: Self.screen(of: window))
+    }
+
+    /// Moves `window` into `zone` of `screen` and reports the snap.
+    func move(_ window: AXUIElement, to zone: WindowZone, on screen: NSScreen) {
+        let target = zone.frame(in: screen.visibleFrame)
+        Self.apply(target, to: window)
+        onSnap?(window, target, screen)
+    }
+
+    static func focusedWindow() -> AXUIElement? {
+        let systemElement = AXUIElementCreateSystemWide()
+        var focusedApp: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            systemElement, kAXFocusedApplicationAttribute as CFString, &focusedApp
+        ) == .success, let app = focusedApp else { return nil }
+
+        var focusedWindow: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            app as! AXUIElement, kAXFocusedWindowAttribute as CFString, &focusedWindow
+        ) == .success, let window = focusedWindow else { return nil }
+        return (window as! AXUIElement)
+    }
+
+    /// AX frame (top-left origin) of a window.
+    static func axFrame(of window: AXUIElement) -> CGRect? {
         var positionValue: CFTypeRef?
-        AXUIElementCopyAttributeValue(window, kAXPositionAttribute as CFString, &positionValue)
-        var position = CGPoint.zero
-        if let pv = positionValue { AXValueGetValue(pv as! AXValue, .cgPoint, &position) }
-        return NSScreen.screens.first { $0.frame.contains(position) } ?? NSScreen.main ?? NSScreen.screens[0]
+        var sizeValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(window, kAXPositionAttribute as CFString, &positionValue) == .success,
+              AXUIElementCopyAttributeValue(window, kAXSizeAttribute as CFString, &sizeValue) == .success,
+              let positionValue, let sizeValue
+        else { return nil }
+        var origin = CGPoint.zero
+        var size = CGSize.zero
+        AXValueGetValue(positionValue as! AXValue, .cgPoint, &origin)
+        AXValueGetValue(sizeValue as! AXValue, .cgSize, &size)
+        return CGRect(origin: origin, size: size)
     }
 
-    private func frame(for zone: WindowZone, on screen: NSScreen) -> CGRect {
-        let f = zone == .fullscreen ? screen.frame : screen.visibleFrame
-        switch zone {
-        case .leftHalf:       return CGRect(x: f.minX,              y: f.minY, width: f.width / 2,     height: f.height)
-        case .rightHalf:      return CGRect(x: f.midX,              y: f.minY, width: f.width / 2,     height: f.height)
-        case .leftThird:      return CGRect(x: f.minX,              y: f.minY, width: f.width / 3,     height: f.height)
-        case .centerThird:    return CGRect(x: f.minX + f.width/3,  y: f.minY, width: f.width / 3,     height: f.height)
-        case .rightThird:     return CGRect(x: f.minX + 2*f.width/3,y: f.minY, width: f.width / 3,     height: f.height)
-        case .leftTwoThirds:  return CGRect(x: f.minX,              y: f.minY, width: 2*f.width / 3,   height: f.height)
-        case .rightTwoThirds: return CGRect(x: f.minX + f.width/3,  y: f.minY, width: 2*f.width / 3,   height: f.height)
-        case .fullscreen:     return f
-        case .topLeft:        return CGRect(x: f.minX,              y: f.midY, width: f.width / 2,     height: f.height / 2)
-        case .topRight:       return CGRect(x: f.midX,              y: f.midY, width: f.width / 2,     height: f.height / 2)
-        case .bottomLeft:     return CGRect(x: f.minX,              y: f.minY, width: f.width / 2,     height: f.height / 2)
-        case .bottomRight:    return CGRect(x: f.midX,              y: f.minY, width: f.width / 2,     height: f.height / 2)
+    /// The screen holding most of the window (multi-monitor safe).
+    static func screen(of window: AXUIElement) -> NSScreen {
+        let screens = NSScreen.screens
+        let fallback = NSScreen.main ?? screens[0]
+        guard let axFrame = axFrame(of: window), let primary = screens.first else { return fallback }
+        let rect = ScreenGeometry.appKitRect(fromAX: axFrame, primaryHeight: primary.frame.height)
+        return ScreenGeometry.bestScreenIndex(for: rect, screens: screens.map(\.frame)).map { screens[$0] } ?? fallback
+    }
+
+    /// Moves and resizes an AX window to `nsFrame` (AppKit coordinates).
+    static func apply(_ nsFrame: CGRect, to window: AXUIElement) {
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? nsFrame.maxY
+        var axOrigin = ScreenGeometry.axOrigin(forAppKit: nsFrame, primaryHeight: primaryHeight)
+        var axSize = nsFrame.size
+
+        // size → position → size: avoids clamping when moving to a smaller display
+        if let sizeVal = AXValueCreate(.cgSize, &axSize) {
+            AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeVal)
         }
-    }
-
-    private func applyFrame(_ nsFrame: CGRect, to window: AXUIElement, screen: NSScreen) {
-        // AX uses top-left origin; NSScreen uses bottom-left origin.
-        // Primary screen height anchors the coordinate flip.
-        let primaryHeight = NSScreen.screens.first?.frame.height ?? screen.frame.height
-        let axY = primaryHeight - nsFrame.maxY
-
-        var axOrigin = CGPoint(x: nsFrame.minX, y: axY)
-        var axSize   = CGSize(width: nsFrame.width, height: nsFrame.height)
-
         if let posVal = AXValueCreate(.cgPoint, &axOrigin) {
             AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, posVal)
         }
@@ -121,15 +152,31 @@ final class WindowManagerService {
         }
     }
 
-    private func loadShortcuts() {
-        guard let data = UserDefaults.standard.data(forKey: defaultsKey),
-              let decoded = try? JSONDecoder().decode([String: ShortcutBinding].self, from: data)
-        else { return }
-        shortcuts = decoded
+    // MARK: - Private
+
+    private func rebuildHandlerBindings() {
+        var map: [ShortcutBinding: WindowZone] = [:]
+        for zone in WindowZone.allCases {
+            if let binding = shortcuts[zone.rawValue] { map[binding] = zone }
+        }
+        handler.bindings = map
     }
 
     private func saveShortcuts() {
         guard let encoded = try? JSONEncoder().encode(shortcuts) else { return }
-        UserDefaults.standard.set(encoded, forKey: defaultsKey)
+        defaults.set(encoded, forKey: Self.shortcutsKey)
+    }
+
+    /// Reads current shortcuts, copying the pre-v2 key once. The old key is kept so an older
+    /// installed version sharing the same defaults keeps working.
+    static func loadShortcuts(from defaults: UserDefaults) -> [String: ShortcutBinding] {
+        if let data = defaults.data(forKey: shortcutsKey) {
+            return (try? JSONDecoder().decode([String: ShortcutBinding].self, from: data)) ?? [:]
+        }
+        guard let legacy = defaults.data(forKey: legacyShortcutsKey),
+              let decoded = try? JSONDecoder().decode([String: ShortcutBinding].self, from: legacy)
+        else { return [:] }
+        defaults.set(legacy, forKey: shortcutsKey)
+        return decoded
     }
 }

@@ -68,11 +68,23 @@ private struct WindowCard: View {
         .padding(8)
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
+                .fill(isSelected ? Color.accentColor.opacity(0.18) : Color.clear)
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
-                        .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
+                        .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 3)
                 )
         )
+        // selection shown by a checkmark too, not colour alone
+        .overlay(alignment: .topTrailing) {
+            if isSelected {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(.white, Color.accentColor)
+                    .padding(4)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(info.appName)\(info.windowTitle.isEmpty ? "" : ", \(info.windowTitle)")")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }

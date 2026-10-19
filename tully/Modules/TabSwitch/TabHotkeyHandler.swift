@@ -1,21 +1,8 @@
-// tully/Modules/TabSwitch/TabHotkeyHandler.swift
 import CoreGraphics
 import Foundation
 
-// File-scope C callback — avoids @MainActor inference with SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor
-private func tabEventTapCallback(
-    proxy: CGEventTapProxy,
-    type: CGEventType,
-    event: CGEvent,
-    userInfo: UnsafeMutableRawPointer?
-) -> Unmanaged<CGEvent>? {
-    guard let userInfo else { return Unmanaged.passRetained(event) }
-    let handler = Unmanaged<TabHotkeyHandler>.fromOpaque(userInfo).takeUnretainedValue()
-    return handler.handle(type: type, event: event)
-}
-
-// @unchecked Sendable: thread safety managed via NSLock
-final class TabHotkeyHandler: @unchecked Sendable {
+/// Switcher key handling. Runs on the EventTapService thread; thread safety via NSLock.
+nonisolated final class TabHotkeyHandler: @unchecked Sendable {
     var isOverlayVisible: Bool {
         get { lock.withLock { _overlayVisible } }
         set { lock.withLock { _overlayVisible = newValue } }
@@ -25,10 +12,11 @@ final class TabHotkeyHandler: @unchecked Sendable {
         set { lock.withLock { _hotkey = newValue } }
     }
 
-    var onActivate: (() -> Void)?
-    var onTab: ((Bool) -> Void)?    // Bool = isShift (reverse)
-    var onConfirm: (() -> Void)?
-    var onDismiss: (() -> Void)?
+    // set once before the handler is registered with the tap
+    var onActivate: (@Sendable () -> Void)?
+    var onTab: (@Sendable (Bool) -> Void)?    // Bool = isShift (reverse)
+    var onConfirm: (@Sendable () -> Void)?
+    var onDismiss: (@Sendable () -> Void)?
 
     private let lock = NSLock()
     private var _overlayVisible = false
@@ -37,74 +25,27 @@ final class TabHotkeyHandler: @unchecked Sendable {
     private var _activationKeyCode: UInt16 = 0
     private var _activationModifiers: UInt64 = 0
 
-    private var eventTap: CFMachPort?
-    private var runLoopSource: CFRunLoopSource?
-    private var tapThread: Thread?
-    private var tapRunLoop: CFRunLoop?
-    private var selfUnmanaged: Unmanaged<TabHotkeyHandler>?
-
-    func start() {
-        guard eventTap == nil else { return }
-        // Intercept keyDown, keyUp, and flagsChanged so we can confirm on key release
-        let mask = CGEventMask(
-            (1 << CGEventType.keyDown.rawValue) |
-            (1 << CGEventType.keyUp.rawValue) |
-            (1 << CGEventType.flagsChanged.rawValue)
-        )
-        let unmanaged = Unmanaged.passRetained(self)
-        selfUnmanaged = unmanaged
-
-        guard let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .defaultTap,
-            eventsOfInterest: mask,
-            callback: tabEventTapCallback,
-            userInfo: unmanaged.toOpaque()
-        ) else {
-            selfUnmanaged?.release()
-            selfUnmanaged = nil
-            return
+    /// Events were missed (tap was disabled): close the overlay rather than keep swallowing keys.
+    func reset() {
+        let wasVisible = lock.withLock {
+            defer { _overlayVisible = false }
+            return _overlayVisible
         }
-
-        eventTap = tap
-        runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
-
-        let ready = DispatchSemaphore(value: 0)
-        tapThread = Thread {
-            self.tapRunLoop = CFRunLoopGetCurrent()
-            ready.signal()
-            if let src = self.runLoopSource {
-                CFRunLoopAddSource(self.tapRunLoop, src, .commonModes)
-            }
-            CGEvent.tapEnable(tap: tap, enable: true)
-            CFRunLoopRun()
+        if wasVisible {
+            let cb = onDismiss
+            DispatchQueue.main.async { cb?() }
         }
-        tapThread?.name = "com.tully.tabswitchtap"
-        tapThread?.start()
-        ready.wait()
     }
 
-    func stop() {
-        if let tap = eventTap { CGEvent.tapEnable(tap: tap, enable: false) }
-        if let rl = tapRunLoop { CFRunLoopStop(rl) }
-        selfUnmanaged?.release()
-        selfUnmanaged = nil
-        eventTap = nil
-        runLoopSource = nil
-        tapThread = nil
-        tapRunLoop = nil
-    }
-
-    // Called on CGEventTap thread — must NOT touch MainActor state directly
-    fileprivate func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+    /// Returns true to consume the event.
+    func handle(type: CGEventType, event: CGEvent) -> Bool {
         let overlayVisible = lock.withLock { _overlayVisible }
 
         switch type {
 
         case .keyDown:
             let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
-            let mods = event.flags.rawValue & ~CGEventFlags.maskNonCoalesced.rawValue
+            let mods = event.flags.rawValue & ShortcutBinding.userModifiers.rawValue
 
             if overlayVisible {
                 switch keyCode {
@@ -112,11 +53,15 @@ final class TabHotkeyHandler: @unchecked Sendable {
                     let shift = (mods & CGEventFlags.maskShift.rawValue) != 0
                     let cb = onTab
                     DispatchQueue.main.async { cb?(shift) }
-                    return nil
+                    return true
                 case 53: // Esc — dismiss
                     let cb = onDismiss
                     DispatchQueue.main.async { cb?() }
-                    return nil
+                    return true
+                case 36, 76: // Return / Enter — confirm
+                    let cb = onConfirm
+                    DispatchQueue.main.async { cb?() }
+                    return true
                 default:
                     break
                 }
@@ -125,6 +70,8 @@ final class TabHotkeyHandler: @unchecked Sendable {
             // Check activation hotkey
             if let hk = lock.withLock({ _hotkey }) {
                 let binding = ShortcutBinding(keyCode: keyCode, modifiers: mods)
+                // a held hotkey auto-repeats: consume repeats without reopening (it would reset the selection)
+                if binding == hk, event.getIntegerValueField(.keyboardEventAutorepeat) != 0 { return true }
                 if binding == hk {
                     // Record which key/mods triggered activation so we know what to watch for on release
                     lock.withLock {
@@ -133,7 +80,7 @@ final class TabHotkeyHandler: @unchecked Sendable {
                     }
                     let cb = onActivate
                     DispatchQueue.main.async { cb?() }
-                    return nil
+                    return true
                 }
             }
 
@@ -147,25 +94,25 @@ final class TabHotkeyHandler: @unchecked Sendable {
             if keyCode == actKey && actMods == 0 {
                 let cb = onConfirm
                 DispatchQueue.main.async { cb?() }
-                return nil
+                return true
             }
 
         case .flagsChanged:
             guard overlayVisible else { break }
-            let currentMods = event.flags.rawValue & ~CGEventFlags.maskNonCoalesced.rawValue
+            let currentMods = event.flags.rawValue & ShortcutBinding.userModifiers.rawValue
             let actMods = lock.withLock { _activationModifiers }
             // Confirm when ALL modifier keys that were part of the hotkey are released
             if actMods != 0 && (currentMods & actMods) == 0 {
                 let cb = onConfirm
                 DispatchQueue.main.async { cb?() }
                 // Pass through so the target app sees the modifier release with clean state
-                return Unmanaged.passRetained(event)
+                return false
             }
 
         default:
             break
         }
 
-        return Unmanaged.passRetained(event)
+        return false
     }
 }

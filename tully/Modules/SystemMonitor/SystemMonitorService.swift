@@ -1,15 +1,51 @@
-// tully/Modules/SystemMonitor/SystemMonitorService.swift
 import Darwin
 import Foundation
 
+nonisolated struct UsagePoint: Sendable {
+    var cpu: Double      // 0–1
+    var memory: Double   // 0–1
+    var gpu: Double      // 0–1
+    var netIn: Double    // bytes/s
+    var netOut: Double   // bytes/s
+}
+
 @Observable
 final class SystemMonitorService {
-    var snapshot = SystemSnapshot()
-    private(set) var networkHistory: [(netIn: Double, netOut: Double)] = []
+    static let intervals: [Double] = [1, 2, 5, 10]
+    static let historyLength = 120
+    static let intervalKey = "tully.monitor.interval"
+
+    private(set) var snapshot = SystemSnapshot()
+    private(set) var history: [UsagePoint] = []
+    private(set) var groups: [ProcessGroup] = []
     private(set) var localIP: String = "—"
 
-    private var samplerTask: Task<Void, Never>?
-    private var tickCount = 0
+    /// Seconds between samples.
+    var interval: Double {
+        didSet { defaults.set(interval, forKey: Self.intervalKey) }
+    }
+
+    /// Whether something on screen shows processes or sensors (popover, System Monitor window).
+    /// When false the sampler only reads the cheap totals the menu bar needs.
+    @ObservationIgnored var needsDetails: () -> Bool = { true }
+
+    /// Called after each sample (drives the menu bar).
+    @ObservationIgnored var onSample: ((SystemSnapshot) -> Void)?
+
+    @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored private var samplerTask: Task<Void, Never>?
+    @ObservationIgnored private var tickCount = 0
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        let saved = defaults.double(forKey: Self.intervalKey)
+        interval = Self.intervals.contains(saved) ? saved : 2
+    }
+
+    /// Top groups by memory, for the compact popover list.
+    func topGroupsByMemory(_ count: Int) -> [ProcessGroup] {
+        Array(groups.sorted { $0.ramBytes > $1.ramBytes }.prefix(count))
+    }
 
     func start() {
         guard samplerTask == nil else { return }
@@ -17,17 +53,11 @@ final class SystemMonitorService {
         samplerTask = Task.detached(priority: .utility) { [weak self] in
             var sampler = SystemSampler()
             while !Task.isCancelled {
-                let snap = sampler.sample()
-                let entry = (netIn: snap.netIn, netOut: snap.netOut)
-                await MainActor.run {
-                    guard let self else { return }
-                    self.snapshot = snap
-                    self.networkHistory.append(entry)
-                    if self.networkHistory.count > 30 { self.networkHistory.removeFirst() }
-                    self.tickCount += 1
-                    if self.tickCount % 5 == 0 { self.localIP = Self.resolveLocalIP() }
-                }
-                try? await Task.sleep(for: .seconds(2))
+                let details = await self?.needsDetails() ?? false
+                let snap = sampler.sample(includeProcesses: details)
+                let groups = ProcessGroup.build(from: snap.processes)
+                guard let interval = await self?.apply(snap, groups: groups) else { return }
+                try? await Task.sleep(for: .seconds(interval))
             }
         }
     }
@@ -35,6 +65,33 @@ final class SystemMonitorService {
     func stop() {
         samplerTask?.cancel()
         samplerTask = nil
+    }
+
+    /// Publishes a sample; returns the delay before the next one. Internal for tests.
+    func apply(_ snap: SystemSnapshot, groups: [ProcessGroup]) -> Double {
+        // keep the last process list while nobody looks, so reopening shows data immediately
+        let keepsOldDetails = snap.processes.isEmpty && !snapshot.processes.isEmpty
+        snapshot = keepsOldDetails ? Self.merging(snap, detailsFrom: snapshot) : snap
+        if !keepsOldDetails { self.groups = groups }
+        history.append(UsagePoint(
+            cpu: snap.cpuPercent / 100,
+            memory: snap.ramFraction,
+            gpu: (snap.sensors.gpuPercent ?? 0) / 100,
+            netIn: snap.netIn,
+            netOut: snap.netOut
+        ))
+        if history.count > Self.historyLength { history.removeFirst(history.count - Self.historyLength) }
+        tickCount += 1
+        if tickCount % 5 == 0 { localIP = Self.resolveLocalIP() }
+        onSample?(snap)
+        return interval
+    }
+
+    private static func merging(_ fresh: SystemSnapshot, detailsFrom old: SystemSnapshot) -> SystemSnapshot {
+        var merged = fresh
+        merged.processes = old.processes
+        merged.sensors = old.sensors
+        return merged
     }
 
     private static func resolveLocalIP() -> String {
