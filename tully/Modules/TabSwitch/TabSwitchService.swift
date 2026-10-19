@@ -5,6 +5,10 @@ import CoreGraphics
 import Foundation
 import ScreenCaptureKit
 
+// ponytail: private but stable AX SPI (used by AltTab, Rectangle, yabai); no public AX→CGWindowID mapping exists
+@_silgen_name("_AXUIElementGetWindow")
+private func _AXUIElementGetWindow(_ element: AXUIElement, _ windowID: UnsafeMutablePointer<CGWindowID>) -> AXError
+
 @Observable
 final class TabSwitchService {
     var isEnabled: Bool = false
@@ -166,55 +170,33 @@ final class TabSwitchService {
     }
 
     private func raiseWindow(pid: pid_t, windowID: CGWindowID) {
+        let app = NSRunningApplication(processIdentifier: pid)
         let appEl = AXUIElementCreateApplication(pid)
         var windowsRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(appEl, kAXWindowsAttribute as CFString, &windowsRef) == .success,
               let axWindows = windowsRef as? [AXUIElement]
         else {
-            NSRunningApplication(processIdentifier: pid)?.activate()
+            app?.activate()
             return
         }
 
-        // Match by position: kCGWindowBounds and kAXPositionAttribute both use
-        // top-left-origin screen coordinates, so they're directly comparable.
-        let targetOrigin = cgOriginForWindow(windowID)
-        var bestWindow: AXUIElement? = nil
-
-        if let target = targetOrigin {
-            var bestDist = CGFloat.infinity
-            for axWin in axWindows {
-                var posRef: CFTypeRef?
-                guard AXUIElementCopyAttributeValue(axWin, kAXPositionAttribute as CFString, &posRef) == .success,
-                      let pv = posRef else { continue }
-                var axPos = CGPoint.zero
-                AXValueGetValue(pv as! AXValue, .cgPoint, &axPos)
-                let dist = abs(axPos.x - target.x) + abs(axPos.y - target.y)
-                if dist < bestDist {
-                    bestDist = dist
-                    bestWindow = axWin
-                }
-            }
+        // Match by exact window ID: position matching picks the wrong window
+        // when several windows of the same app share an origin (e.g. maximized).
+        let match = axWindows.first { axWin in
+            var id: CGWindowID = 0
+            return _AXUIElementGetWindow(axWin, &id) == .success && id == windowID
         }
 
-        let win = bestWindow ?? axWindows.first
-        if let win {
-            AXUIElementPerformAction(win, kAXRaiseAction as CFString)
-            // kAXMainAttribute = "AXMain" — marks this window as the key window of the app
+        if let win = match ?? axWindows.first {
+            // Make it main/focused before activating, otherwise activation
+            // brings the app's previous key window back to the front.
             AXUIElementSetAttributeValue(win, kAXMainAttribute as CFString, kCFBooleanTrue)
+            AXUIElementSetAttributeValue(appEl, kAXFocusedWindowAttribute as CFString, win)
+            app?.activate()
+            AXUIElementPerformAction(win, kAXRaiseAction as CFString)
+        } else {
+            app?.activate()
         }
-        NSRunningApplication(processIdentifier: pid)?.activate()
-    }
-
-    private func cgOriginForWindow(_ windowID: CGWindowID) -> CGPoint? {
-        guard let list = CGWindowListCopyWindowInfo(
-            [.optionIncludingWindow], windowID
-        ) as? [[String: Any]],
-        let dict = list.first,
-        let boundsObj = dict[kCGWindowBounds as String] as? NSDictionary
-        else { return nil }
-        var rect = CGRect.zero
-        CGRectMakeWithDictionaryRepresentation(boundsObj, &rect)
-        return rect.width > 0 ? rect.origin : nil
     }
 
     // MARK: - Persistence
