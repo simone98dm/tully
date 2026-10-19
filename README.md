@@ -282,6 +282,14 @@ First launch:
 ./scripts/export-icons.sh    # regenerates the app and menu bar icons from design/icon/
 ```
 
+### Releasing
+
+```bash
+./scripts/release.sh minor --notes-file notes.md   # or patch / major; omit --notes-file to auto-generate notes
+```
+
+The script bumps the version in the project, builds **once** into `dist/tully.app`, checks that the built app reports the new version, zips that same app, commits, creates an annotated tag `vX.Y.Z`, pushes, and publishes the GitHub release. A GitHub Action (`.github/workflows/tag-version.yml`) also fails any pushed tag whose name doesn't match the app version, and `./scripts/version.sh` prints or checks the version by hand.
+
 - **Unit tests** (`tullyTests`, Swift Testing) cover zone geometry, multi-monitor screen choice, shortcut normalization, the shared event tap, the switcher and ring state machines, menu bar formatting, sampler math, process grouping, Disk Clean policy and Trash behaviour, Stay Awake assertions, Keyboard Cleaning, tiling suggestions and the converter switch.
 - **UI tests** (`tullyUITests`) drive the popover, the Settings window, Disk Clean and System Monitor, and check that every control has an accessibility label.
 - **KumquatCore** runs the full conversion matrix.

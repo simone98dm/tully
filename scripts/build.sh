@@ -24,4 +24,6 @@ fi
 mkdir -p "$DIST"
 rm -rf "$DIST/tully.app"
 ditto "$DERIVED/Build/Products/$CONFIG/tully.app" "$DIST/tully.app"
-echo "Built: $DIST/tully.app ($(du -sh "$DIST/tully.app" | cut -f1))"
+VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$DIST/tully.app/Contents/Info.plist")
+BUILD=$(/usr/libexec/PlistBuddy -c "Print CFBundleVersion" "$DIST/tully.app/Contents/Info.plist")
+echo "Built: $DIST/tully.app — version $VERSION ($BUILD), $(du -sh "$DIST/tully.app" | cut -f1)"

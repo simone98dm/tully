@@ -1,0 +1,11 @@
+# Fails a pushed release tag whose name doesn't match the version inside the app.
+name: Tag matches app version
+on:
+  push:
+    tags: ["v*"]
+jobs:
+  check:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/version.sh --check-tag "${GITHUB_REF_NAME}"
