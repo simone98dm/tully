@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>tully — the menu bar utility for macOS</title>
+<meta name="description" content="tully lives in your Mac's menu bar: system stats, window tiling with a radial ring, a window switcher, Disk Clean and a drag-and-drop file converter. Free, local, no telemetry.">
+<meta property="og:title" content="tully — the menu bar utility for macOS">
+<meta property="og:description" content="System stats, window tiling, file conversion and Disk Clean, from the menu bar. Free, local, no telemetry.">
+<meta property="og:image" content="assets/popover-system.png">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="preload" href="assets/fonts/jetbrains-mono.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="bar">
+  <a href="#top" class="brand"><img src="assets/icon.svg" alt="" width="22" height="22">tully <span data-i18n="bar.manual">— field manual</span></a>
+  <nav>
+    <a href="#tools" data-i18n="nav.tools">Tools</a>
+    <a href="#convert" data-i18n="nav.convert">Converter</a>
+    <a href="#install" data-i18n="nav.install">Install</a>
+    <button class="lang" id="lang" type="button" aria-label="Switch language">IT</button>
+  </nav>
+</header>
+
+<main id="top">
+
+<!-- § 00 HERO -->
+<section class="hero">
+  <div class="hero-copy">
+    <span class="no" data-i18n="hero.no">§ 00 — introduction</span>
+    <h1 data-i18n="hero.title">One tool.<br><i>Always</i> at hand.</h1>
+    <p class="lede" data-i18n="hero.lede">tully lives in your menu bar and does the ten small things you do every day: watch the system, place windows, convert files, clean the disk. Nothing new to learn. It just works the way your Mac already does.</p>
+    <div class="cta">
+      <a class="btn" href="https://github.com/simone98dm/tully/releases/latest" data-i18n="cta.download">Download for macOS</a>
+      <a class="btn ghost" href="https://github.com/simone98dm/tully" data-i18n="cta.source">View source</a>
+    </div>
+    <dl class="spec">
+      <div><dt data-i18n="spec.pairs">conversion pairs</dt><dd>355</dd></div>
+      <div><dt data-i18n="spec.tools">file tools</dt><dd>28</dd></div>
+      <div><dt data-i18n="spec.price">subscription</dt><dd>0 €</dd></div>
+      <div><dt data-i18n="spec.data">data sent anywhere</dt><dd data-i18n="spec.none">none</dd></div>
+    </dl>
+  </div>
+
+  <div class="hero-demo">
+    <div class="keys" id="ringKeys" aria-hidden="true">
+      <div class="key">⌃<small>control</small></div>
+      <div class="key">⌥<small>option</small></div>
+    </div>
+    <p class="hint" data-i18n="hero.hint">↑ hold the keys (or press ⌃⌥ for real), then move the mouse</p>
+    <div class="stage">
+      <div class="stack">
+        <img src="assets/popover-system.png" alt="tully popover, System tab" width="360" height="614">
+        <img src="assets/popover-windows.png" alt="tully popover, Windows tab" width="360" height="614">
+        <img src="assets/popover-convert.png" alt="tully popover, Convert tab" width="360" height="614">
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Window Ring overlay, drawn in SVG by main.js -->
+<div class="ring" id="ring" aria-hidden="true">
+  <svg viewBox="-110 -110 220 220" id="ringSvg"></svg>
+  <span id="ringLabel">Left Half</span>
+</div>
+
+<!-- § 01 MENU BAR -->
+<section class="sec menubar">
+  <header class="sec-head">
+    <span class="no">§ 01</span>
+    <h2 data-i18n="mb.title">The menu bar, <i>read at a glance.</i></h2>
+    <p data-i18n="mb.body">CPU, memory, disk and network next to the icon, in four styles. Fixed widths, so nothing jumps around. Orange above 65 %, red above 85 %.</p>
+  </header>
+  <figure class="mb-shot reveal">
+    <img src="assets/menubar-styles.png" alt="The four menu bar styles in light and dark" width="1040" height="544" loading="lazy">
+  </figure>
+</section>
+
+<!-- § 02 THE DIAL -->
+<section class="dial-track" id="tools">
+  <div class="dial-sticky">
+    <div class="dial-gl"><canvas id="dial" aria-hidden="true"></canvas><span class="dial-count" id="dialCount">01 / 06</span></div>
+    <div class="dial-panel" id="dialPanel" aria-live="polite"></div>
+  </div>
+</section>
+
+<!-- § 03 CONVERTER -->
+<section class="sec convert" id="convert">
+  <header class="sec-head">
+    <span class="no">§ 03</span>
+    <h2 data-i18n="cv.title">Drag a file. <i>Tap a key.</i></h2>
+    <p data-i18n="cv.body">Start dragging any file and tap a modifier: a wheel opens under the cursor. Drop on a segment and the result lands next to the original. No window to open, no permissions needed.</p>
+  </header>
+  <div class="cv-grid">
+    <div class="cv-keys" role="tablist" aria-label="Converter wheels">
+      <button class="cv-key on" role="tab" aria-selected="true" data-wheel="convert"><span class="key sm">⇧</span><span><b data-i18n="cv.k1">Convert</b><small data-i18n="cv.k1s">355 pairs: images, video, audio, PDF, documents, EPUB, subtitles, archives</small></span></button>
+      <button class="cv-key" role="tab" aria-selected="false" data-wheel="tools"><span class="key sm">⌘</span><span><b data-i18n="cv.k2">Tools</b><small data-i18n="cv.k2s">28 tools: compress, resize, crop, redact, trim, merge PDFs, zip…</small></span></button>
+      <button class="cv-key" role="tab" aria-selected="false" data-wheel="actions"><span class="key sm">⌃</span><span><b data-i18n="cv.k3">Actions</b><small data-i18n="cv.k3s">AirDrop, Float, Copy, Move, Copy Path, open in Terminal or VS Code</small></span></button>
+    </div>
+    <figure class="cv-wheel">
+      <img id="wheel" src="assets/wheel-convert.png" alt="The Convert wheel" width="680" height="680" loading="lazy">
+    </figure>
+  </div>
+</section>
+
+<!-- § 04 GALLERY -->
+<section class="sec gallery">
+  <header class="sec-head">
+    <span class="no">§ 04</span>
+    <h2 data-i18n="gl.title">Everything else, <i>where you'd expect it.</i></h2>
+  </header>
+  <div class="strip" tabindex="0" aria-label="Screenshots">
+    <figure><img src="assets/system-monitor.png" alt="" width="900" height="672" loading="lazy"><figcaption data-i18n="gl.c1">System Monitor — every process grouped by app</figcaption></figure>
+    <figure><img src="assets/auto-layout.png" alt="" width="900" height="592" loading="lazy"><figcaption data-i18n="gl.c2">Tiling suggestions fill the space that's left</figcaption></figure>
+    <figure><img src="assets/converter-photo-editor.png" alt="" width="1520" height="1280" loading="lazy"><figcaption data-i18n="gl.c3">Photo editor — crop, adjust, annotate, redact</figcaption></figure>
+    <figure><img src="assets/converter-pdf-pages.png" alt="" width="1040" height="1120" loading="lazy"><figcaption data-i18n="gl.c4">PDF pages — reorder, rotate, split</figcaption></figure>
+    <figure><img src="assets/keyboard-cleaning.png" alt="" width="900" height="592" loading="lazy"><figcaption data-i18n="gl.c5">Keyboard Cleaning — wipe without typing</figcaption></figure>
+    <figure><img src="assets/settings-general.png" alt="" width="760" height="592" loading="lazy"><figcaption data-i18n="gl.c6">Settings — searchable, one window</figcaption></figure>
+  </div>
+</section>
+
+<!-- § 05 PRIVACY -->
+<section class="sec privacy">
+  <header class="sec-head">
+    <span class="no">§ 05</span>
+    <h2 data-i18n="pv.title">No App Store. No subscription. <i>No telemetry.</i></h2>
+  </header>
+  <div class="table">
+    <div class="row th"><span data-i18n="pv.h1">Permission</span><span data-i18n="pv.h2">Used for</span><span data-i18n="pv.h3">Without it</span></div>
+    <div class="row"><span>Accessibility</span><span data-i18n="pv.r1b">Zones, Window Ring, switcher, Keyboard Cleaning</span><span data-i18n="pv.r1c">Those stay off, the rest works</span></div>
+    <div class="row"><span>Screen Recording</span><span data-i18n="pv.r2b">Live thumbnails in the switcher</span><span data-i18n="pv.r2c">App icons instead</span></div>
+    <div class="row"><span>Full Disk Access</span><span data-i18n="pv.r3b">Disk Clean in protected folders (optional)</span><span data-i18n="pv.r3c">Listed as unreadable</span></div>
+    <div class="row"><span data-i18n="pv.r4a">Network</span><span data-i18n="pv.r4b">Nothing. No calls, no analytics.</span><span>—</span></div>
+  </div>
+</section>
+
+<!-- § 06 INSTALL -->
+<section class="sec install" id="install">
+  <header class="sec-head">
+    <span class="no">§ 06</span>
+    <h2 data-i18n="in.title">Up and running <i>in a minute.</i></h2>
+  </header>
+  <ol class="steps">
+    <li><b>01</b><span data-i18n="in.s1">Download the latest <code>tully.zip</code> from GitHub Releases and move tully to Applications.</span></li>
+    <li><b>02</b><span data-i18n="in.s2">The app isn't notarized: the first time, right-click → <b>Open</b>.</span></li>
+    <li><b>03</b><span data-i18n="in.s3">Look for the ring in the menu bar. Grant Accessibility when you want the window features.</span></li>
+    <li><b>04</b><span data-i18n="in.s4">Optional, for video, audio and WebP:</span><code class="cmd">brew install ffmpeg webp</code></li>
+  </ol>
+  <div class="cta center">
+    <a class="btn" href="https://github.com/simone98dm/tully/releases/latest" data-i18n="cta.download">Download for macOS</a>
+    <a class="btn ghost" href="https://github.com/simone98dm/tully" data-i18n="cta.source">View source</a>
+    <span class="req" data-i18n="in.req">Requires macOS 26 Tahoe or later</span>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <span>tully · <a href="https://github.com/simone98dm/tully">github.com/simone98dm/tully</a></span>
+  <span data-i18n="ft.credits">Ring inspired by Loop, Disk Clean by One Menu, converter by Tangerine.</span>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" integrity="sha384-CI3ELBVUz9XQO+97x6nwMDPosPR5XvsxW2ua7N1Xeygeh1IxtgqtCkGfQY9WWdHu" crossorigin="anonymous" defer></script>
+<script src="i18n.js" defer></script>
+<script src="ascii.js" defer></script>
+<script src="dial.js" defer></script>
+<script src="main.js" defer></script>
+</body>
+</html>

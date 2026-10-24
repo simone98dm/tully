@@ -31,13 +31,19 @@ agentdb.rvf
 agentdb.rvf.lock
 CLAUDE.md
 ruvector.db
-docs/
+docs/*
 !docs/appcast.xml
+# GitHub Pages site
+!docs/index.html
+!docs/*.css
+!docs/*.js
+!docs/assets/
 .claude/
 *.zip
 # Agent tooling state
 .claude-flow/
 .swarm/
+.playwright-mcp/
 build.log
 dist/
 *.profraw
