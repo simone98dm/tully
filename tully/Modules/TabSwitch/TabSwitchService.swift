@@ -31,6 +31,7 @@ final class TabSwitchService {
         handler.onTab      = { [weak self] shift in MainActor.assumeIsolated { self?.cycleSelection(reverse: shift) } }
         handler.onConfirm  = { [weak self] in MainActor.assumeIsolated { self?.confirmSelection() } }
         handler.onDismiss  = { [weak self] in MainActor.assumeIsolated { self?.dismissOverlay() } }
+        handler.onQuit     = { [weak self] in MainActor.assumeIsolated { self?.quitSelectedApp() } }
         loadSettings()
     }
 
@@ -93,6 +94,20 @@ final class TabSwitchService {
         guard !windows.isEmpty else { return }
         let n = windows.count
         selectedIndex = reverse ? (selectedIndex - 1 + n) % n : (selectedIndex + 1) % n
+    }
+
+    /// Quits the selected window's app and drops all its windows from the list; the overlay stays open.
+    /// `terminate` is injectable for tests.
+    func quitSelectedApp(terminate: (pid_t) -> Void = { NSRunningApplication(processIdentifier: $0)?.terminate() }) {
+        guard selectedIndex < windows.count else { return }
+        let pid = windows[selectedIndex].pid
+        guard pid != getpid() else { return }
+        terminate(pid)
+        let removedBefore = windows[..<selectedIndex].filter { $0.pid == pid }.count
+        windows = windows.filter { $0.pid != pid }
+        guard !windows.isEmpty else { dismissOverlay(); return }
+        selectedIndex = min(selectedIndex - removedBefore, windows.count - 1)
+        positionOverlay()
     }
 
     // MARK: - Private

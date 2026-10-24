@@ -30,7 +30,7 @@ struct TabSwitchView: View {
                             toasts.show(binding.map { "Switcher: \($0.displayString)" } ?? "Switcher shortcut cleared")
                         }
                     }
-                    Text("Hold the modifier and press Tab / ⇧Tab to move. Release it (or press Return) to switch, Esc to cancel.")
+                    Text("Hold the modifier and press Tab / ⇧Tab or ← → to move, Q to quit the selected app. Release it (or press Return) to switch, Esc to cancel.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

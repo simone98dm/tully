@@ -31,6 +31,32 @@ struct TabSwitchServiceTests {
         #expect(service.selectedIndex == 0)
     }
 
+    @Test func quitDropsAllWindowsOfSelectedApp() {
+        let service = TabSwitchService(defaults: makeDefaults())
+        let list = [(1, 10), (2, 20), (3, 10), (4, 30)].map {
+            WindowInfo(id: CGWindowID($0.0), appName: "", windowTitle: "", pid: pid_t($0.1))
+        }
+        service.showOverlay(with: list)
+        service.cycleSelection(reverse: false) // window 3, pid 10
+        var quit: [pid_t] = []
+        service.quitSelectedApp { quit.append($0) }
+        #expect(quit == [10])
+        #expect(service.windows.map(\.id) == [2, 4])
+        #expect(service.selectedIndex == 1) // the window after the quit one
+        service.quitSelectedApp { quit.append($0) }
+        service.quitSelectedApp { quit.append($0) }
+        #expect(quit == [10, 30, 20])
+        #expect(service.windows.isEmpty) // last app quit closes the overlay
+    }
+
+    @Test func quitNeverTargetsTullyItself() {
+        let service = TabSwitchService(defaults: makeDefaults())
+        let own = getpid()
+        service.showOverlay(with: [WindowInfo(id: 1, appName: "", windowTitle: "", pid: own)])
+        service.quitSelectedApp { _ in Issue.record("must not terminate itself") }
+        #expect(service.windows.count == 1)
+    }
+
     @Test func persistsEnabledAndHotkey() {
         let defaults = makeDefaults()
         let hotkey = ShortcutBinding(keyCode: KeyCode.space, modifiers: CGEventFlags.maskAlternate.rawValue)

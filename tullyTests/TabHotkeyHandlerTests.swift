@@ -20,6 +20,7 @@ struct TabHotkeyHandlerTests {
         handler.onTab = { reverse in events.add(reverse ? "back" : "next") }
         handler.onConfirm = { events.add("confirm") }
         handler.onDismiss = { events.add("dismiss") }
+        handler.onQuit = { events.add("quit") }
         return (handler, events)
     }
 
@@ -44,6 +45,22 @@ struct TabHotkeyHandlerTests {
         #expect(handler.handle(type: .keyDown, event: keyEvent(KeyCode.escape, flags: .maskAlternate)))
         await drainMainQueue()
         #expect(events.all == ["confirm", "dismiss"])
+    }
+
+    @Test func arrowsMoveAndQQuitsWhileVisible() async {
+        let (handler, events) = makeHandler(hotkey: optionSpace)
+        handler.isOverlayVisible = true
+        #expect(handler.handle(type: .keyDown, event: keyEvent(KeyCode.right, flags: .maskAlternate)))
+        #expect(handler.handle(type: .keyDown, event: keyEvent(KeyCode.left, flags: .maskAlternate)))
+        #expect(handler.handle(type: .keyDown, event: keyEvent(KeyCode.q, flags: .maskAlternate)))
+        await drainMainQueue()
+        #expect(events.all == ["next", "back", "quit"])
+    }
+
+    @Test func arrowsAndQPassThroughWhileHidden() {
+        let (handler, _) = makeHandler(hotkey: optionSpace)
+        #expect(!handler.handle(type: .keyDown, event: keyEvent(KeyCode.right, flags: .maskAlternate)))
+        #expect(!handler.handle(type: .keyDown, event: keyEvent(KeyCode.q, flags: .maskAlternate)))
     }
 
     @Test func resetDismissesVisibleOverlay() async {

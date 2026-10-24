@@ -32,6 +32,7 @@ func drainMainQueue() async {
 
 enum KeyCode {
     static let a: CGKeyCode = 0
+    static let q: CGKeyCode = 12
     static let tab: CGKeyCode = 48
     static let space: CGKeyCode = 49
     static let returnKey: CGKeyCode = 36
