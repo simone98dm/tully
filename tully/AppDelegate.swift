@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let settings = AppSettings(defaults: AppEnvironment.defaults)
     let popoverState = PopoverState()
     let toasts = ToastCenter()
+    let updates = UpdateChecker(defaults: AppEnvironment.defaults)
     lazy var windowManager = WindowManagerService(defaults: AppEnvironment.defaults, eventTap: eventTap)
     lazy var tabSwitch = TabSwitchService(defaults: AppEnvironment.defaults, eventTap: eventTap)
     lazy var autoLayout = AutoLayoutController(eventTap: eventTap)
@@ -86,6 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if AppEnvironment.usesDemoData { DemoData.fill(monitor, disk: diskScanner, settings: settings) } else { monitor.start() }
         // UI tests must not install global drag monitors or pop up onboarding
         if !AppEnvironment.isUITesting && !AppEnvironment.usesDemoData { converter.apply() }
+        if !AppEnvironment.usesIsolatedDefaults { updates.start() }
         observeModes()
         updateStatusItem()
         openWindowsRequestedByLaunchFlags()
@@ -244,6 +246,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .environment(windowRing)
             .environment(tabSwitch)
             .environment(settings)
+            .environment(updates)
     }
 
     @objc private func togglePopover() {

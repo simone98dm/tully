@@ -10,6 +10,7 @@ struct GeneralPane: View {
     @Environment(SystemMonitorService.self) private var monitor
     @Environment(WindowRingService.self) private var ring
     @Environment(FileConverterController.self) private var converter
+    @Environment(UpdateChecker.self) private var updates
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var launchError: String?
     @State private var confirmReset = false
@@ -25,6 +26,16 @@ struct GeneralPane: View {
                 if let launchError {
                     Label(launchError, systemImage: "exclamationmark.triangle.fill").foregroundStyle(Theme.warning)
                 }
+            }
+
+            Section {
+                Toggle(isOn: Binding(get: { updates.isEnabled }, set: { updates.isEnabled = $0 })) {
+                    Text("Check for updates daily")
+                    Text("Ask to open the GitHub release page when a new version is out.")
+                }
+                .accessibilityLabel("Check for updates daily")
+            } header: {
+                Text("Updates")
             }
 
             Section {
@@ -64,6 +75,7 @@ struct GeneralPane: View {
                 tabSwitch.reset()
                 ring.reset()
                 converter.settings.reset()
+                updates.reset()
                 converter.apply(showOnboarding: false)
                 toasts.show("All settings were reset")
             }
