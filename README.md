@@ -155,8 +155,9 @@ A keyboard window switcher that also switches between windows of the same app.
 
 1. Set an activation shortcut (e.g. **⌥Space**) and enable the switcher.
 2. Press the shortcut. Every window shows as a card, with live thumbnails if Screen Recording is granted (app icons otherwise).
-3. Keep holding the modifier and press **Tab** / **⇧Tab** to move. The selected card has a checkmark.
-4. Release the modifier, or press **↩**, to switch. **Esc** cancels.
+3. Keep holding the modifier and press **Tab** / **⇧Tab** or **←** / **→** to move. The selected card has a checkmark.
+4. Press **Q** (e.g. **⌥Q** while holding ⌥) to quit the selected app. Its windows leave the list and the switcher stays open.
+5. Release the modifier, or press **↩**, to switch. **Esc** cancels.
 
 ---
 

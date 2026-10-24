@@ -17,7 +17,7 @@ struct SwitcherPane: View {
                     ShortcutRecorder(binding: service.hotkey, actionName: "Window Switcher") { service.setHotkey($0) }
                 }
             } footer: {
-                Text("Hold the modifier and press Tab / ⇧Tab to move. Release it (or press Return) to switch, Esc to cancel.")
+                Text("Hold the modifier and press Tab / ⇧Tab or ← → to move, Q to quit the selected app. Release it (or press Return) to switch, Esc to cancel.")
             }
             Section("Permissions") {
                 PermissionStatusRow(title: "Accessibility", detail: "Brings the chosen window to the front",

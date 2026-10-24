@@ -17,6 +17,7 @@ nonisolated final class TabHotkeyHandler: @unchecked Sendable {
     var onTab: (@Sendable (Bool) -> Void)?    // Bool = isShift (reverse)
     var onConfirm: (@Sendable () -> Void)?
     var onDismiss: (@Sendable () -> Void)?
+    var onQuit: (@Sendable () -> Void)?       // quit the selected window's app
 
     private let lock = NSLock()
     private var _overlayVisible = false
@@ -54,6 +55,10 @@ nonisolated final class TabHotkeyHandler: @unchecked Sendable {
                     let cb = onTab
                     DispatchQueue.main.async { cb?(shift) }
                     return true
+                case 123, 124: // ← / → — move
+                    let cb = onTab
+                    DispatchQueue.main.async { cb?(keyCode == 123) }
+                    return true
                 case 53: // Esc — dismiss
                     let cb = onDismiss
                     DispatchQueue.main.async { cb?() }
@@ -63,7 +68,12 @@ nonisolated final class TabHotkeyHandler: @unchecked Sendable {
                     DispatchQueue.main.async { cb?() }
                     return true
                 default:
-                    break
+                    // Q as printed on the user's layout, so ⌥Q works on AZERTY too
+                    if ShortcutBinding.keyName(keyCode) == "Q" {
+                        let cb = onQuit
+                        DispatchQueue.main.async { cb?() }
+                        return true
+                    }
                 }
             }
 
