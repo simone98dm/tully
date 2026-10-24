@@ -198,6 +198,11 @@ final class OpenInActionTests: XCTestCase {
         XCTAssertTrue(none.contains(.terminal)) // Terminal ships with macOS
     }
 
+    func testActionsWheelOrder() {
+        XCTAssertEqual(FileAction.applicable(to: [url("photo.png")], isInstalled: { _ in true }),
+                       [.copy, .copyPath, .move, .float, .airDrop, .terminal])
+    }
+
     func testOpenInEntriesForTheToolsWheel() {
         XCTAssertEqual(FileAction.openIn(for: [url("Project")], isInstalled: { _ in true }), [.terminal, .iTerm])
         XCTAssertEqual(FileAction.openIn(for: [url("main.swift")], isInstalled: { _ in true }), [.vsCode])

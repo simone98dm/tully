@@ -12,7 +12,7 @@ enum ScreenshotRenderer {
         // File Converter wheels (Convert for an image, Tools for a PDF, Actions)
         for (kind, file, highlight, name) in [(WheelKind.convert, samples.png, 1, "wheel-convert"),
                                               (.tools, samples.pdf, 0, "wheel-tools"),
-                                              (.actions, samples.png, 4, "wheel-actions"),
+                                              (.actions, samples.png, 1, "wheel-actions"),
                                               (.actions, samples.folder, 6, "wheel-actions-folder"),
                                               (.actions, samples.code, 6, "wheel-actions-code")] {
             let view = WheelView(frame: NSRect(x: 0, y: 0, width: WheelPanel.size, height: WheelPanel.size))

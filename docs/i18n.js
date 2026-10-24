@@ -25,7 +25,7 @@ window.I18N = {
     'cv.k2': 'Strumenti',
     'cv.k2s': '28 strumenti: comprimi, ridimensiona, ritaglia, oscura, taglia, unisci PDF, zip…',
     'cv.k3': 'Azioni',
-    'cv.k3s': 'AirDrop, Float, Copia, Sposta, Copia percorso, apri nel Terminale o in VS Code',
+    'cv.k3s': 'Copia, Copia percorso, Sposta, Float, AirDrop, apri nel Terminale o in VS Code',
     'gl.title': 'Tutto il resto, <i>dove te lo aspetti.</i>',
     'gl.c1': 'System Monitor: ogni processo raggruppato per app',
     'gl.c2': 'I suggerimenti di tiling riempiono lo spazio rimasto',

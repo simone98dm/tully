@@ -2,7 +2,8 @@ import AppKit
 
 /// The actions wheel. AirDrop and Float need UI and are performed by the app.
 public enum FileAction: String, CaseIterable, Sendable {
-    case airDrop, float, copy, move, copyPath, terminal, iTerm, vsCode
+    // Declaration order is wheel order, clockwise from the top: clipboard first, "open in" apps last.
+    case copy, copyPath, move, float, airDrop, terminal, iTerm, vsCode
 
     public var title: String {
         switch self {

@@ -169,7 +169,7 @@ A keyboard window switcher that also switches between windows of the same app.
 | :---: | --- | --- |
 | ⇧ Shift | **Convert** | Every format the file can become: 355 conversion pairs across images, video, audio, PDF, documents, EPUB, slides, spreadsheets, subtitles and archives |
 | ⌘ Command | **Tools** | 28 tools filtered to the file: compress (by % or target size), resize, rotate, flip, crop, adjust, annotate, redact, metadata, QR reading, make PDF, collage, trim, speed, split, join, normalize, bleep, channels, video crop and snapshot, PDF merge, split, reorganize and rotate, zip |
-| ⌃ Control | **Actions** | AirDrop, Float (an always-on-top shelf), Copy, Move (recent folders), Copy Path, Terminal. Folders also get **Open folder in Terminal** and **Open folder in iTerm2**; code files get **Open in VS Code** (when those apps are installed). These "open in" entries are on the ⌘ Tools wheel too |
+| ⌃ Control | **Actions** | Copy, Copy Path, Move (recent folders), Float (an always-on-top shelf), AirDrop, Terminal. Folders also get **Open folder in Terminal** and **Open folder in iTerm2**; code files get **Open in VS Code** (when those apps are installed). These "open in" entries are on the ⌘ Tools wheel too |
 
 | Convert | Tools | Actions |
 | :---: | :---: | :---: |
@@ -340,3 +340,4 @@ scripts/             build, test, perf, e2e, screenshots, icons
 - **Privacy:** no network calls and no analytics. Conversions, scans and cleanups happen on your Mac.
 - **Uninstall:** quit tully, delete the app, then `defaults delete com.simone98dm.tully`.
 - **Credits:** the ring concept is inspired by [Loop](https://github.com/MrKai77/Loop), the tiling suggestions and Disk Clean rules by [One Menu](https://coffeebreak.software/one-menu/), and the File Converter by [Tangerine](https://apps.apple.com/app/id6813034065). No code was copied from Loop (GPL); the ring is an independent implementation.
+- **License:** [MIT](LICENSE).
